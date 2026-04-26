@@ -204,6 +204,10 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
   const current: any = db.prepare('SELECT * FROM tasks WHERE id = ? AND userId = ?').get(req.params.id, req.user.id);
   if (!current) return res.status(404).json({ error: 'Taak niet gevonden' });
 
+  // Parse existing JSON fields before merging with updates to avoid double stringification
+  current.subtasks = JSON.parse(current.subtasks || '[]');
+  current.attachments = JSON.parse(current.attachments || '[]');
+
   const updated = { ...current, ...updates };
   const stmt = db.prepare(`
     UPDATE tasks 

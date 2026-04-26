@@ -167,7 +167,23 @@ export default function App() {
         }
         if (tasksRes.ok) {
           const fetchedTasks = await tasksRes.json();
-          setTasks(fetchedTasks);
+          // Normalize tasks to handle potential double-stringification and ensure arrays
+          const normalizedTasks = fetchedTasks.map((t: any) => {
+            let subtasks = t.subtasks;
+            while (typeof subtasks === 'string' && subtasks.trim().startsWith('[')) {
+              try { subtasks = JSON.parse(subtasks); } catch { break; }
+            }
+            if (!Array.isArray(subtasks)) subtasks = [];
+
+            let attachments = t.attachments;
+            while (typeof attachments === 'string' && attachments.trim().startsWith('[')) {
+              try { attachments = JSON.parse(attachments); } catch { break; }
+            }
+            if (!Array.isArray(attachments)) attachments = [];
+
+            return { ...t, subtasks, attachments };
+          });
+          setTasks(normalizedTasks);
         }
       } catch (error) {
         console.error('Fout bij laden van data:', error);
@@ -1024,12 +1040,15 @@ export default function App() {
         </div>
       </main>
 
-      {/* Task Details Modal */}
-      <TaskModal 
-        task={selectedTask}
-        onClose={() => setSelectedTaskId(null)}
-        onUpdate={(updates) => selectedTaskId && updateTaskDetails(selectedTaskId, updates)}
-      />
+      <AnimatePresence>
+        {selectedTask && (
+          <TaskModal 
+            task={selectedTask}
+            onClose={() => setSelectedTaskId(null)}
+            onUpdate={(updates: Partial<Task>) => selectedTaskId && updateTaskDetails(selectedTaskId, updates)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1427,9 +1446,14 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
         <PriorityMenu current={task.priority} onSelect={(p) => onPriorityChange(task.id, p)} />
         <div className="flex items-center gap-2">
           <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} />
-          <div className="w-5 h-5 rounded-full bg-gray-200 border border-white flex items-center justify-center text-[10px] text-gray-500 font-bold">
-            BT
-          </div>
+          {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
+            <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-sub)] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+              <ListTodo className="w-2.5 h-2.5" />
+              <span className="font-medium">
+                {task.subtasks.filter(st => st && st.completed).length}/{task.subtasks.length}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -1484,7 +1508,17 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
                         }}
                       />
                     ) : (
-                      task.title
+                      <div className="flex items-center gap-2">
+                        {task.title}
+                        {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
+                          <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-sub)] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                            <ListTodo className="w-2.5 h-2.5" />
+                            <span className="font-medium">
+                              {task.subtasks.filter(st => st && st.completed).length}/{task.subtasks.length}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </td>
@@ -1561,18 +1595,20 @@ const PriorityMenu = React.memo(function PriorityMenu({ current, onSelect }: { c
   const [open, setOpen] = useState(false);
   const priorities: Priority[] = ['Laag', 'Gemiddeld', 'Hoog', 'Urgent'];
 
-  const styles = {
+  const styles: Record<string, string> = {
     'Laag': 'bg-gray-200 text-gray-600',
     'Gemiddeld': 'bg-[#fde68a] text-[#d97706]',
     'Hoog': 'bg-[#fecaca] text-[#ef4444]',
     'Urgent': 'bg-red-500 text-white'
   };
 
+  const currentStyleClass = styles[current] || 'bg-gray-100 text-gray-500';
+
   return (
     <div className="relative">
       <button 
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-all hover:opacity-80 cursor-pointer ${styles[current]}`}
+        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-all hover:opacity-80 cursor-pointer ${currentStyleClass}`}
       >
         {current}
       </button>
@@ -1593,7 +1629,7 @@ const PriorityMenu = React.memo(function PriorityMenu({ current, onSelect }: { c
                   onClick={(e) => { e.stopPropagation(); onSelect(p); setOpen(false); }}
                   className={`w-full text-left px-3 py-2 text-[11px] font-semibold hover:bg-gray-50 flex items-center gap-2 ${p === current ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-sub)]'}`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${styles[p].split(' ')[0]}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${(styles[p] || 'bg-gray-400').split(' ')[0]}`} />
                   {p}
                 </button>
               ))}
@@ -1609,17 +1645,23 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, isSmall }
   const [open, setOpen] = useState(false);
   const statuses: Status[] = ['Te doen', 'Bezig', 'Klaar'];
 
-  const colors = {
+  const colors: Record<string, string> = {
     'Te doen': 'bg-gray-200 text-gray-600',
     'Bezig': 'bg-blue-100 text-blue-600',
-    'Klaar': 'bg-emerald-100 text-emerald-600'
+    'Low': 'bg-blue-100 text-blue-600',
+    'Medium': 'bg-blue-100 text-blue-600',
+    'High': 'bg-orange-100 text-orange-600',
+    'Klaar': 'bg-emerald-100 text-emerald-600',
+    'Urgent': 'bg-red-100 text-red-600'
   };
+
+  const currentColorClass = colors[current] || 'bg-gray-100 text-gray-500';
 
   return (
     <div className="relative">
       <button 
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className={`flex items-center gap-1.5 rounded font-bold transition-colors ${isSmall ? 'text-[10px] px-1.5 py-0.5' : 'text-[10px] px-1.5 py-0.5'} ${colors[current]} uppercase tracking-wider`}
+        className={`flex items-center gap-1.5 rounded font-bold transition-colors ${isSmall ? 'text-[10px] px-1.5 py-0.5' : 'text-[10px] px-1.5 py-0.5'} ${currentColorClass} uppercase tracking-wider`}
       >
         {current}
         <ChevronRight className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -1641,7 +1683,7 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, isSmall }
                   onClick={(e) => { e.stopPropagation(); onSelect(s); setOpen(false); }}
                   className={`w-full text-left px-3 py-2 text-[11px] font-semibold hover:bg-gray-50 flex items-center gap-2 ${s === current ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-sub)]'}`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${colors[s].split(' ')[0]}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${(colors[s] || 'bg-gray-400').split(' ')[0]}`} />
                   {s}
                 </button>
               ))}
@@ -1653,104 +1695,103 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, isSmall }
   );
 });
 
-function TaskModal({ task, onClose, onUpdate }: { task?: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void }) {
-  if (!task) return null;
-
+function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void }) {
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
-        />
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
-        >
-          {/* Header */}
-          <div className="px-8 py-6 border-b border-[var(--color-border)] flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                task.priority === 'Urgent' ? 'bg-red-100 text-red-600' :
-                task.priority === 'Hoog' ? 'bg-orange-100 text-orange-600' :
-                task.priority === 'Gemiddeld' ? 'bg-blue-100 text-blue-600' :
-                'bg-gray-100 text-gray-600'
-              }`}>
-                {task.priority}
-              </div>
-              <h2 className="text-xl font-semibold text-[var(--color-text-main)]">{task.title}</h2>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="relative w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        {/* Header */}
+        <div className="px-8 py-6 border-b border-[var(--color-border)] flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+              task.priority === 'Urgent' ? 'bg-red-100 text-red-600' :
+              task.priority === 'Hoog' ? 'bg-orange-100 text-orange-600' :
+              task.priority === 'Gemiddeld' ? 'bg-blue-100 text-blue-600' :
+              'bg-gray-100 text-gray-600'
+            }`}>
+              {task.priority}
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-              <X className="w-5 h-5 text-[var(--color-text-sub)]" />
-            </button>
+            <h2 className="text-xl font-semibold text-[var(--color-text-main)] truncate max-w-2xl">{task.title}</h2>
           </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="w-5 h-5 text-[var(--color-text-sub)]" />
+          </button>
+        </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-            <div className="space-y-12">
-              {/* Row 1: Description & Subtasks (50/50 split for maximum width) */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                <div className="space-y-10">
-                  {/* Description */}
-                  <section>
-                    <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
-                      <FileText className="w-3.5 h-3.5" />
-                      Beschrijving
-                    </label>
-                    <textarea 
-                      className="w-full h-64 p-4 bg-gray-50 border border-[var(--color-border)] rounded-2xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all resize-none leading-relaxed"
-                      placeholder="Voeg een gedetailleerde beschrijving toe..."
-                      value={task.description}
-                      onChange={(e) => onUpdate({ description: e.target.value })}
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
+          <div className="space-y-12">
+            {/* Row 1: Description & Subtasks (50/50 split for maximum width) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+              <div className="space-y-10">
+                {/* Description */}
+                <section>
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                    <FileText className="w-3.5 h-3.5" />
+                    Beschrijving
+                  </label>
+                  <textarea 
+                    className="w-full h-64 p-4 bg-gray-50 border border-[var(--color-border)] rounded-2xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all resize-none leading-relaxed"
+                    placeholder="Voeg een gedetailleerde beschrijving toe..."
+                    value={task.description || ''}
+                    onChange={(e) => onUpdate({ description: e.target.value })}
+                  />
+                </section>
+
+                {/* Link */}
+                <section>
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    Link (URL)
+                  </label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      className="flex-1 p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all"
+                      placeholder="https://example.com"
+                      value={task.link || ''}
+                      onChange={(e) => onUpdate({ link: e.target.value })}
                     />
-                  </section>
+                    {task.link && (
+                      <a 
+                        href={task.link.startsWith('http') ? task.link : `https://${task.link}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-3 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl hover:bg-gray-100 transition-all text-[var(--color-accent)]"
+                      >
+                        <ExternalLink className="w-5 h-5" />
+                      </a>
+                    )}
+                  </div>
+                </section>
+              </div>
 
-                  {/* Link */}
-                  <section>
-                    <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
-                      <LinkIcon className="w-3.5 h-3.5" />
-                      Link (URL)
-                    </label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text"
-                        className="flex-1 p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all"
-                        placeholder="https://example.com"
-                        value={task.link || ''}
-                        onChange={(e) => onUpdate({ link: e.target.value })}
-                      />
-                      {task.link && (
-                        <a 
-                          href={task.link.startsWith('http') ? task.link : `https://${task.link}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-3 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl hover:bg-gray-100 transition-all text-[var(--color-accent)]"
-                        >
-                          <ExternalLink className="w-5 h-5" />
-                        </a>
-                      )}
-                    </div>
-                  </section>
-                </div>
-
-                <div className="space-y-10">
-                  {/* Subtasks */}
-                  <section>
-                    <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
-                      <ListTodo className="w-3.5 h-3.5" />
-                      Takenlijst
-                    </label>
-                    <div className="space-y-2">
-                      {task.subtasks?.map((sub) => (
+              <div className="space-y-10">
+                {/* Subtasks */}
+                <section>
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                    <ListTodo className="w-3.5 h-3.5" />
+                    Takenlijst
+                  </label>
+                  <div className="space-y-2">
+                    {(Array.isArray(task.subtasks) ? task.subtasks : []).map((sub) => {
+                      if (!sub || typeof sub !== 'object') return null;
+                      return (
                         <div key={sub.id} className="flex items-center gap-3 p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl group transition-all hover:bg-white shadow-sm border-transparent hover:border-[var(--color-border)]">
                           <button 
                             onClick={() => {
-                              const updated = task.subtasks?.map(s => s.id === sub.id ? { ...s, completed: !s.completed } : s);
+                              const updated = (task.subtasks || []).map(s => s && s.id === sub.id ? { ...s, completed: !s.completed } : s);
                               onUpdate({ subtasks: updated });
                             }}
                             className={`flex-shrink-0 transition-colors ${sub.completed ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-400'}`}
@@ -1760,114 +1801,114 @@ function TaskModal({ task, onClose, onUpdate }: { task?: Task, onClose: () => vo
                           <input 
                             type="text"
                             placeholder="Titel subtaak..."
-                            value={sub.title}
+                            value={sub.title || ''}
                             onChange={(e) => {
-                              const updated = task.subtasks?.map(s => s.id === sub.id ? { ...s, title: e.target.value } : s);
+                              const updated = (task.subtasks || []).map(s => s && s.id === sub.id ? { ...s, title: e.target.value } : s);
                               onUpdate({ subtasks: updated });
                             }}
                             className={`flex-1 bg-transparent border-none outline-none text-base transition-all ${sub.completed ? 'text-gray-400 line-through' : 'text-[var(--color-text-main)]'}`}
                           />
                           <button 
                             onClick={() => {
-                              onUpdate({ subtasks: task.subtasks?.filter(s => s.id !== sub.id) });
+                              onUpdate({ subtasks: (task.subtasks || []).filter(s => s && s.id !== sub.id) });
                             }}
                             className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 text-red-500 rounded-lg transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
-                      ))}
-                      <button 
-                        onClick={() => {
+                      );
+                    })}
+                    <button 
+                      onClick={() => {
+                        onUpdate({ 
+                          subtasks: [...(Array.isArray(task.subtasks) ? task.subtasks : []), { id: `sub-${Date.now()}`, title: '', completed: false }] 
+                        });
+                      }}
+                      className="w-full p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40 group"
+                    >
+                      <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                      Taak toevoegen aan lijst
+                    </button>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            {/* Row 2: Attachments & Meta Info */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-10 border-t border-[var(--color-border)]">
+              <div>
+                {/* Attachments */}
+                <section>
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                    <Paperclip className="w-3.5 h-3.5" />
+                    Bijlagen
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(task.attachments || []).map((att) => (
+                      <div key={att.id} className="flex items-center justify-between p-4 bg-gray-50 border border-[var(--color-border)] rounded-xl group transition-all hover:bg-white shadow-sm border-transparent hover:border-[var(--color-border)]">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-[var(--color-text-sub)]">
+                            <Paperclip className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm font-medium text-[var(--color-text-main)] truncate">{att.name}</span>
+                        </div>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onUpdate({ attachments: (task.attachments || []).filter(a => a.id !== att.id) }); }}
+                          className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 text-red-500 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button 
+                      onClick={() => {
+                        const name = prompt('Bestandsnaam:');
+                        if (name) {
                           onUpdate({ 
-                            subtasks: [...(task.subtasks || []), { id: `sub-${Date.now()}`, title: '', completed: false }] 
+                            attachments: [...(task.attachments || []), { id: `att-${Date.now()}`, name, url: '#' }] 
                           });
-                        }}
-                        className="w-full p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40 group"
-                      >
-                        <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                        Taak toevoegen aan lijst
-                      </button>
-                    </div>
-                  </section>
-                </div>
+                        }
+                      }}
+                      className="p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40"
+                    >
+                      <Plus className="w-5 h-5" />
+                      Bijlage
+                    </button>
+                  </div>
+                </section>
               </div>
 
-              {/* Row 2: Attachments & Meta Info */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-10 border-t border-[var(--color-border)]">
-                <div>
-                  {/* Attachments */}
-                  <section>
-                    <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
-                      <Paperclip className="w-3.5 h-3.5" />
-                      Bijlagen
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {task.attachments?.map((att) => (
-                        <div key={att.id} className="flex items-center justify-between p-4 bg-gray-50 border border-[var(--color-border)] rounded-xl group transition-all hover:bg-white shadow-sm border-transparent hover:border-[var(--color-border)]">
-                          <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-[var(--color-text-sub)]">
-                              <Paperclip className="w-4 h-4" />
-                            </div>
-                            <span className="text-sm font-medium text-[var(--color-text-main)] truncate">{att.name}</span>
-                          </div>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); onUpdate({ attachments: task.attachments?.filter(a => a.id !== att.id) }); }}
-                            className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 text-red-500 rounded-lg transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                      <button 
-                        onClick={() => {
-                          const name = prompt('Bestandsnaam:');
-                          if (name) {
-                            onUpdate({ 
-                              attachments: [...(task.attachments || []), { id: `att-${Date.now()}`, name, url: '#' }] 
-                            });
-                          }
-                        }}
-                        className="p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40"
-                      >
-                        <Plus className="w-5 h-5" />
-                        Bijlage
-                      </button>
+              <div className="space-y-6">
+                {/* Meta Info */}
+                <section>
+                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-4">
+                    <Settings2 className="w-3.5 h-3.5" />
+                    Eigenschappen
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 bg-gray-50 p-6 rounded-2xl border border-[var(--color-border)] shadow-inner">
+                    <div>
+                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2">Status</span>
+                      <StatusMenu current={task.status} onSelect={(s) => onUpdate({ status: s })} />
                     </div>
-                  </section>
-                </div>
-
-                <div className="space-y-6">
-                  {/* Meta Info */}
-                  <section>
-                    <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-4">
-                      <Settings2 className="w-3.5 h-3.5" />
-                      Eigenschappen
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 bg-gray-50 p-6 rounded-2xl border border-[var(--color-border)] shadow-inner">
-                      <div>
-                        <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2">Status</span>
-                        <StatusMenu current={task.status} onSelect={(s) => onUpdate({ status: s })} />
-                      </div>
-                      <div>
-                        <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2">Prioriteit</span>
-                        <PriorityMenu current={task.priority} onSelect={(p) => onUpdate({ priority: p })} />
-                      </div>
-                      <div>
-                        <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2">Aangemaakt</span>
-                        <div className="flex items-center gap-2 text-sm text-[var(--color-text-main)] h-[38px] px-3 bg-white/60 rounded-xl border border-[var(--color-border)]">
-                          <Clock className="w-4 h-4 text-[var(--color-text-sub)]" />
-                          {new Date(task.createdAt).toLocaleDateString()}
-                        </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2">Prioriteit</span>
+                      <PriorityMenu current={task.priority} onSelect={(p) => onUpdate({ priority: p })} />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2">Aangemaakt</span>
+                      <div className="flex items-center gap-2 text-sm text-[var(--color-text-main)] h-[38px] px-3 bg-white/60 rounded-xl border border-[var(--color-border)]">
+                        <Clock className="w-4 h-4 text-[var(--color-text-sub)]" />
+                        {task.createdAt ? new Date(task.createdAt).toLocaleDateString() : '—'}
                       </div>
                     </div>
-                  </section>
-                </div>
+                  </div>
+                </section>
               </div>
             </div>
           </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+        </div>
+      </motion.div>
+    </div>
   );
 }
