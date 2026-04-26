@@ -167,22 +167,12 @@ export default function App() {
         }
         if (tasksRes.ok) {
           const fetchedTasks = await tasksRes.json();
-          // Normalize tasks to handle potential double-stringification and ensure arrays
-          const normalizedTasks = fetchedTasks.map((t: any) => {
-            let subtasks = t.subtasks;
-            while (typeof subtasks === 'string' && subtasks.trim().startsWith('[')) {
-              try { subtasks = JSON.parse(subtasks); } catch { break; }
-            }
-            if (!Array.isArray(subtasks)) subtasks = [];
-
-            let attachments = t.attachments;
-            while (typeof attachments === 'string' && attachments.trim().startsWith('[')) {
-              try { attachments = JSON.parse(attachments); } catch { break; }
-            }
-            if (!Array.isArray(attachments)) attachments = [];
-
-            return { ...t, subtasks, attachments };
-          });
+          // The server now returns parsed objects for subtasks and attachments
+          const normalizedTasks = fetchedTasks.map((t: any) => ({
+            ...t,
+            subtasks: Array.isArray(t.subtasks) ? t.subtasks : [],
+            attachments: Array.isArray(t.attachments) ? t.attachments : []
+          }));
           setTasks(normalizedTasks);
         }
       } catch (error) {

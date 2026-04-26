@@ -201,6 +201,15 @@ app.get('/api/tasks', authenticateToken, (req: any, res) => {
 
 app.post('/api/tasks', authenticateToken, (req: any, res) => {
   const task = req.body;
+  
+  // Helper to ensure we store clean JSON
+  const parseJSON = (val: any) => {
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch { return []; }
+    }
+    return Array.isArray(val) ? val : [];
+  };
+
   const stmt = db.prepare(`
     INSERT INTO tasks (id, userId, spaceId, title, description, status, priority, link, dueDate, subtasks, attachments, createdAt) 
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -215,8 +224,8 @@ app.post('/api/tasks', authenticateToken, (req: any, res) => {
     task.priority, 
     task.link || '', 
     task.dueDate || null,
-    JSON.stringify(task.subtasks || []), 
-    JSON.stringify(task.attachments || []),
+    JSON.stringify(parseJSON(task.subtasks)), 
+    JSON.stringify(parseJSON(task.attachments)),
     task.createdAt
   );
   res.json({ success: true });
@@ -227,11 +236,25 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
   const current: any = db.prepare('SELECT * FROM tasks WHERE id = ? AND userId = ?').get(req.params.id, req.user.id);
   if (!current) return res.status(404).json({ error: 'Taak niet gevonden' });
 
-  // Parse existing JSON fields before merging with updates to avoid double stringification
-  current.subtasks = JSON.parse(current.subtasks || '[]');
-  current.attachments = JSON.parse(current.attachments || '[]');
+  // Helper to ensure we handle incoming data correctly
+  const parseJSON = (val: any) => {
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch { return val; } // Return val if it's not JSON
+    }
+    return val;
+  };
 
+  // Convert current from DB (strings) to objects
+  const existingSubtasks = typeof current.subtasks === 'string' ? JSON.parse(current.subtasks || '[]') : [];
+  const existingAttachments = typeof current.attachments === 'string' ? JSON.parse(current.attachments || '[]') : [];
+
+  // Parse incoming updates if they are strings
+  const updatedSubtasks = updates.subtasks !== undefined ? parseJSON(updates.subtasks) : existingSubtasks;
+  const updatedAttachments = updates.attachments !== undefined ? parseJSON(updates.attachments) : existingAttachments;
+
+  // Merge the rest
   const updated = { ...current, ...updates };
+
   const stmt = db.prepare(`
     UPDATE tasks 
     SET spaceId = ?, title = ?, description = ?, status = ?, priority = ?, link = ?, dueDate = ?, subtasks = ?, attachments = ?
@@ -245,8 +268,8 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
     updated.priority,
     updated.link,
     updated.dueDate || null,
-    JSON.stringify(updated.subtasks || []),
-    JSON.stringify(updated.attachments || []),
+    JSON.stringify(Array.isArray(updatedSubtasks) ? updatedSubtasks : []),
+    JSON.stringify(Array.isArray(updatedAttachments) ? updatedAttachments : []),
     req.params.id,
     req.user.id
   );
