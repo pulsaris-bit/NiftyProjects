@@ -32,6 +32,14 @@ export interface Task {
   subtasks?: SubTask[];
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  createdAt: string;
+}
+
 export interface Space {
   id: string;
   name: string;

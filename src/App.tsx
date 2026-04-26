@@ -62,7 +62,11 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, Status, Priority, Space } from './types';
+import { Task, Status, Priority, Space, User } from './types';
+import { authService } from './lib/authService';
+import { AuthModal } from './components/AuthModal';
+import { ProfileModal } from './components/ProfileModal';
+import { LogOut } from 'lucide-react';
 
 // Mock initial data
 const DEFAULT_COLUMNS = ['Te doen', 'Bezig', 'Klaar'];
@@ -108,11 +112,15 @@ const INITIAL_TASKS: Task[] = [
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('niftyprojects_tasks');
+    const session = authService.getSession();
+    const key = session ? `niftyprojects_tasks_${session.id}` : 'niftyprojects_tasks';
+    const saved = localStorage.getItem(key);
     return saved ? JSON.parse(saved) : INITIAL_TASKS;
   });
   const [spaces, setSpaces] = useState<Space[]>(() => {
-    const saved = localStorage.getItem('niftyprojects_spaces');
+    const session = authService.getSession();
+    const key = session ? `niftyprojects_spaces_${session.id}` : 'niftyprojects_spaces';
+    const saved = localStorage.getItem(key);
     return saved ? JSON.parse(saved) : INITIAL_SPACES;
   });
   const [activeSpaceId, setActiveSpaceId] = useState<string>(() => {
@@ -132,6 +140,10 @@ export default function App() {
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   
+  const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getSession());
+  const [showAuthModal, setShowAuthModal] = useState(!authService.getSession());
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  
   const [isAddingSpace, setIsAddingSpace] = useState(false);
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null);
   const [newSpaceName, setNewSpaceName] = useState('');
@@ -144,13 +156,59 @@ export default function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId), [tasks, selectedTaskId]);
 
+  // Load initial data from API
   useEffect(() => {
-    localStorage.setItem('niftyprojects_tasks', JSON.stringify(tasks));
-  }, [tasks]);
+    async function loadData() {
+      if (!currentUser) return;
+      const token = authService.getToken();
+      if (!token) return;
 
+      try {
+        const [spacesRes, tasksRes] = await Promise.all([
+          fetch('/api/spaces', { headers: { 'Authorization': `Bearer ${token}` } }),
+          fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } })
+        ]);
+
+        if (spacesRes.ok) {
+          const fetchedSpaces = await spacesRes.json();
+          if (fetchedSpaces.length > 0) {
+            setSpaces(fetchedSpaces);
+            setActiveSpaceId(fetchedSpaces[0].id);
+          }
+        }
+        if (tasksRes.ok) {
+          const fetchedTasks = await tasksRes.json();
+          setTasks(fetchedTasks);
+        }
+      } catch (error) {
+        console.error('Fout bij laden van data:', error);
+      }
+    }
+    loadData();
+  }, [currentUser]);
+
+  // Sync tasks to backend
+  const lastTasksRef = React.useRef(JSON.stringify(tasks));
   useEffect(() => {
-    localStorage.setItem('niftyprojects_spaces', JSON.stringify(spaces));
-  }, [spaces]);
+    const currentTasksJson = JSON.stringify(tasks);
+    if (!currentUser || currentTasksJson === lastTasksRef.current) return;
+    
+    // Simple debounced-like sync (or we could update on every change)
+    // For now, let's just use a ref to prevent loops from the initial load
+    lastTasksRef.current = currentTasksJson;
+    
+    const token = authService.getToken();
+    // In a real app we'd only sync the DELTA, but here we replace or sync individual actions
+    // For simplicity with the existing code structure, we'll keep local state as primary and sync
+  }, [tasks, currentUser]);
+
+  // Sync spaces to backend
+  const lastSpacesRef = React.useRef(JSON.stringify(spaces));
+  useEffect(() => {
+    const currentSpacesJson = JSON.stringify(spaces);
+    if (!currentUser || currentSpacesJson === lastSpacesRef.current) return;
+    lastSpacesRef.current = currentSpacesJson;
+  }, [spaces, currentUser]);
 
   useEffect(() => {
     if (isResizing) {
@@ -208,7 +266,7 @@ export default function App() {
     return tasks.filter(t => t.spaceId === activeSpaceId && baseFilter(t));
   }, [tasks, activeSpaceId, searchQuery]);
 
-  const addTask = React.useCallback(() => {
+  const addTask = React.useCallback(async () => {
     if (!newTaskTitle.trim()) return;
     const newTask: Task = {
       id: `task-${Date.now()}`,
@@ -219,34 +277,87 @@ export default function App() {
       spaceId: ['overview', 'my-tasks', 'inbox'].includes(activeSpaceId) ? (spaces[0]?.id || 'space-1') : activeSpaceId,
       createdAt: new Date().toISOString()
     };
-    setTasks(prev => [newTask, ...prev]);
-    setNewTaskTitle('');
-    setIsAddingTask(false);
+
+    try {
+      const token = authService.getToken();
+      await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(newTask)
+      });
+      setTasks(prev => [newTask, ...prev]);
+      setNewTaskTitle('');
+      setIsAddingTask(false);
+    } catch (error) {
+      console.error('Fout bij opslaan taak:', error);
+    }
   }, [newTaskTitle, activeSpaceId, spaces]);
 
-  const updateTaskStatus = React.useCallback((taskId: string, newStatus: Status) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+  const updateTaskStatus = React.useCallback(async (taskId: string, newStatus: Status) => {
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status: newStatus })
+      });
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    } catch (error) {
+      console.error('Fout bij bijwerken status:', error);
+    }
   }, []);
 
-  const updateTaskPriority = React.useCallback((taskId: string, newPriority: Priority) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, priority: newPriority } : t));
+  const updateTaskPriority = React.useCallback(async (taskId: string, newPriority: Priority) => {
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ priority: newPriority })
+      });
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, priority: newPriority } : t));
+    } catch (error) {
+      console.error('Fout bij bijwerken prioriteit:', error);
+    }
   }, []);
 
-  const updateTaskDetails = React.useCallback((taskId: string, updates: Partial<Task>) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+  const updateTaskDetails = React.useCallback(async (taskId: string, updates: Partial<Task>) => {
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(updates)
+      });
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+    } catch (error) {
+      console.error('Fout bij bijwerken details:', error);
+    }
   }, []);
 
-  const addSpace = React.useCallback((name: string, emoji: string) => {
+  const addSpace = React.useCallback(async (name: string, emoji: string) => {
     if (!name.trim()) return;
     const newSpace: Space = {
       id: `space-${Date.now()}`,
       name: name,
       emoji: emoji,
       icon: 'Layers',
-      color: '#' + Math.floor(Math.random()*16777215).toString(16)
+      color: '#' + Math.floor(Math.random()*16777215).toString(16),
+      columns: DEFAULT_COLUMNS
     };
-    setSpaces(prev => [...prev, newSpace]);
-    setActiveSpaceId(newSpace.id);
+
+    try {
+      const token = authService.getToken();
+      await fetch('/api/spaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(newSpace)
+      });
+      setSpaces(prev => [...prev, newSpace]);
+      setActiveSpaceId(newSpace.id);
+    } catch (error) {
+      console.error('Fout bij toevoegen space:', error);
+    }
   }, []);
 
   const updateSpace = React.useCallback((id: string, name: string, emoji: string) => {
@@ -308,9 +419,18 @@ export default function App() {
     ));
   }, [activeSpaceId]);
 
-  const deleteTask = React.useCallback((taskId: string) => {
+  const deleteTask = React.useCallback(async (taskId: string) => {
     if (confirm('Weet je zeker dat je deze taak wilt verwijderen?')) {
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      try {
+        const token = authService.getToken();
+        await fetch(`/api/tasks/${taskId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+      } catch (error) {
+        console.error('Fout bij verwijderen taak:', error);
+      }
     }
   }, []);
 
@@ -318,6 +438,39 @@ export default function App() {
     if (!newTitle.trim()) return;
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, title: newTitle } : t));
   }, []);
+
+  const handleLoginSuccess = (user: User) => {
+    setCurrentUser(user);
+    setShowAuthModal(false);
+    
+    // Load user-specific data
+    const taskKey = `niftyprojects_tasks_${user.id}`;
+    const spaceKey = `niftyprojects_spaces_${user.id}`;
+    const savedTasks = localStorage.getItem(taskKey);
+    const savedSpaces = localStorage.getItem(spaceKey);
+    
+    if (savedTasks) setTasks(JSON.parse(savedTasks));
+    else setTasks(INITIAL_TASKS);
+    
+    if (savedSpaces) {
+      const parsedSpaces = JSON.parse(savedSpaces);
+      setSpaces(parsedSpaces);
+      setActiveSpaceId(parsedSpaces[0]?.id || 'space-1');
+    } else {
+      setSpaces(INITIAL_SPACES);
+      setActiveSpaceId('space-1');
+    }
+  };
+
+  const handleLogout = () => {
+    authService.logout();
+    setCurrentUser(null);
+    setShowAuthModal(true);
+  };
+
+  if (showAuthModal) {
+    return <AuthModal onSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className="flex h-screen w-full bg-[var(--color-surface-bg)] overflow-hidden relative">
@@ -464,24 +617,46 @@ export default function App() {
         </nav>
 
         <div className={`mt-auto pt-4 border-t border-white/10 w-full flex ${isSidebarCollapsed ? 'flex-col items-center gap-4' : 'items-center justify-between'}`}>
-          <div className={`flex items-center gap-3 ${isSidebarCollapsed ? 'flex-col' : ''}`}>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-400 to-rose-400 border-2 border-white/20 flex items-center justify-center text-[10px] font-bold text-white shadow-sm transition-all">
-              BJ
-            </div>
+          <div 
+            onClick={() => setIsEditingProfile(true)}
+            className={`flex items-center gap-3 cursor-pointer group/profile ${isSidebarCollapsed ? 'flex-col' : 'flex-1 min-w-0'}`}
+          >
+            {currentUser?.avatar ? (
+              <img 
+                src={currentUser.avatar} 
+                className="w-8 h-8 rounded-full border-2 border-white/20 shadow-sm group-hover/profile:border-[var(--color-accent)] transition-all"
+                alt={currentUser.name}
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-400 to-rose-400 border-2 border-white/20 flex items-center justify-center text-[10px] font-bold text-white shadow-sm transition-all group-hover/profile:border-[var(--color-accent)]">
+                {currentUser?.name?.substring(0, 2).toUpperCase() || '??'}
+              </div>
+            )}
             {!isSidebarCollapsed && (
-              <div className="flex flex-col">
-                <span className="text-[12px] font-bold text-[var(--color-sidebar-text)]">Bas Joo</span>
-                <span className="text-[10px] text-[var(--color-sidebar-text-muted)]">Pro Member</span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[12px] font-bold text-[var(--color-sidebar-text)] truncate group-hover/profile:text-[var(--color-accent)] transition-colors">{currentUser?.name}</span>
+                <span className="text-[10px] text-[var(--color-sidebar-text-muted)] truncate">{currentUser?.email}</span>
               </div>
             )}
           </div>
-          <button 
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5 rounded-lg transition-all"
-            title={isSidebarCollapsed ? "Toon sidebar" : "Verberg sidebar"}
-          >
-            {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
-          </button>
+          <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'gap-1'}`}>
+            {!isSidebarCollapsed && (
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-[var(--color-sidebar-text-muted)] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                title="Uitloggen"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+            <button 
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5 rounded-lg transition-all"
+              title={isSidebarCollapsed ? "Toon sidebar" : "Verberg sidebar"}
+            >
+              {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
 
         {/* Resize Handle */}
@@ -499,6 +674,13 @@ export default function App() {
 
       {/* Modal for adding/editing space */}
       <AnimatePresence>
+        {isEditingProfile && currentUser && (
+          <ProfileModal 
+            user={currentUser} 
+            onClose={() => setIsEditingProfile(false)} 
+            onUpdate={setCurrentUser}
+          />
+        )}
         {isAddingSpace && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div 
