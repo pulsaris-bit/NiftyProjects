@@ -72,24 +72,6 @@ db.exec(`
   );
 `);
 
-// Seed test user if empty
-const seedTestUser = async () => {
-  const row: any = db.prepare('SELECT count(*) as count FROM users').get();
-  if (row.count === 0) {
-    const hashedPassword = await bcrypt.hash('test1234', 10);
-    const userId = 'user-test-123';
-    db.prepare('INSERT INTO users (id, name, email, password, avatar) VALUES (?, ?, ?, ?, ?)')
-      .run(userId, 'Test User', 'test@example.com', hashedPassword, 'https://api.dicebear.com/7.x/avataaars/svg?seed=test');
-    
-    // Seed a default space
-    db.prepare('INSERT INTO spaces (id, userId, name, emoji, icon, color, columns) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run('space-1', userId, 'Algemeen', '📁', 'Layers', '#FF5733', JSON.stringify(['Te doen', 'Bezig', 'Klaar']));
-    
-    console.log('Testgebruiker aangemaakt: test@example.com / test1234');
-  }
-};
-seedTestUser();
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -118,6 +100,10 @@ app.post('/api/auth/signup', async (req, res) => {
     
     const stmt = db.prepare('INSERT INTO users (id, name, email, password, avatar) VALUES (?, ?, ?, ?, ?)');
     stmt.run(userId, name, email, hashedPassword, avatar || '');
+
+    // Create a default space for the new user
+    const spaceStmt = db.prepare('INSERT INTO spaces (id, userId, name, emoji, icon, color, columns) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    spaceStmt.run(`space-${Date.now()}`, userId, 'Algemeen', '📁', 'Layers', '#FF5733', JSON.stringify(['Te doen', 'Bezig', 'Klaar']));
 
     const token = jwt.sign({ id: userId, email }, JWT_SECRET);
     res.json({ token, user: { id: userId, name, email, avatar } });
@@ -164,6 +150,20 @@ app.put('/api/spaces/:id', authenticateToken, (req: any, res) => {
   const { name, emoji, icon, color, columns } = req.body;
   const stmt = db.prepare('UPDATE spaces SET name = ?, emoji = ?, icon = ?, color = ?, columns = ? WHERE id = ? AND userId = ?');
   stmt.run(name, emoji, icon, color, JSON.stringify(columns), req.params.id, req.user.id);
+  res.json({ success: true });
+});
+
+app.delete('/api/spaces/:id', authenticateToken, (req: any, res) => {
+  // Use a transaction to ensure both space and tasks are deleted
+  const deleteTasks = db.prepare('DELETE FROM tasks WHERE spaceId = ? AND userId = ?');
+  const deleteSpace = db.prepare('DELETE FROM spaces WHERE id = ? AND userId = ?');
+  
+  const transaction = db.transaction(() => {
+    deleteTasks.run(req.params.id, req.user.id);
+    deleteSpace.run(req.params.id, req.user.id);
+  });
+  
+  transaction();
   res.json({ success: true });
 });
 

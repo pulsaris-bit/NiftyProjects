@@ -111,23 +111,9 @@ const INITIAL_TASKS: Task[] = [
 ];
 
 export default function App() {
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    const session = authService.getSession();
-    const key = session ? `niftyprojects_tasks_${session.id}` : 'niftyprojects_tasks';
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : INITIAL_TASKS;
-  });
-  const [spaces, setSpaces] = useState<Space[]>(() => {
-    const session = authService.getSession();
-    const key = session ? `niftyprojects_spaces_${session.id}` : 'niftyprojects_spaces';
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : INITIAL_SPACES;
-  });
-  const [activeSpaceId, setActiveSpaceId] = useState<string>(() => {
-    const saved = localStorage.getItem('niftyprojects_spaces');
-    const parsedSpaces = saved ? JSON.parse(saved) : INITIAL_SPACES;
-    return parsedSpaces[0]?.id || 'space-1';
-  });
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [spaces, setSpaces] = useState<Space[]>(INITIAL_SPACES);
+  const [activeSpaceId, setActiveSpaceId] = useState<string>('space-1');
   const [view, setView] = useState<'board' | 'list'>('board');
   const [searchQuery, setSearchQuery] = useState('');
   const [zoomLevel, setZoomLevel] = useState(100);
@@ -158,7 +144,11 @@ export default function App() {
   // Load initial data from API
   useEffect(() => {
     async function loadData() {
-      if (!currentUser) return;
+      if (!currentUser) {
+        setTasks([]);
+        setSpaces(INITIAL_SPACES);
+        return;
+      }
       const token = authService.getToken();
       if (!token) return;
 
@@ -358,9 +348,41 @@ export default function App() {
     }
   }, []);
 
-  const updateSpace = React.useCallback((id: string, name: string, emoji: string) => {
-    setSpaces(prev => prev.map(s => s.id === id ? { ...s, name, emoji } : s));
+  const updateSpace = React.useCallback(async (id: string, name: string, emoji: string) => {
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/spaces/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name, emoji })
+      });
+      setSpaces(prev => prev.map(s => s.id === id ? { ...s, name, emoji } : s));
+    } catch (error) {
+      console.error('Fout bij bijwerken space:', error);
+    }
   }, []);
+
+  const deleteSpace = React.useCallback(async (id: string) => {
+    if (spaces.length <= 1) {
+      alert('Je moet minimaal één ruimte overhouden.');
+      return;
+    }
+    if (confirm('Weet je zeker dat je deze ruimte en alle bijbehorende taken wilt verwijderen?')) {
+      try {
+        const token = authService.getToken();
+        await fetch(`/api/spaces/${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        setSpaces(prev => prev.filter(s => s.id !== id));
+        if (activeSpaceId === id) {
+          setActiveSpaceId(spaces.find(s => s.id !== id)?.id || '');
+        }
+      } catch (error) {
+        console.error('Fout bij verwijderen space:', error);
+      }
+    }
+  }, [spaces, activeSpaceId]);
 
   const handleOpenSpaceModal = React.useCallback((space?: Space) => {
     if (space) {
@@ -375,46 +397,86 @@ export default function App() {
     setIsAddingSpace(true);
   }, []);
 
-  const addColumn = React.useCallback((name: string) => {
+  const addColumn = React.useCallback(async (name: string) => {
     if (!name.trim()) return;
-    setSpaces(prev => prev.map(s => 
-      s.id === activeSpaceId 
-        ? { ...s, columns: [...(s.columns || DEFAULT_COLUMNS), name] } 
-        : s
-    ));
-    setNewColumnName('');
-    setIsAddingColumn(false);
-  }, [activeSpaceId]);
-
-  const removeColumn = React.useCallback((columnName: string) => {
-    setSpaces(prev => prev.map(s => 
-      s.id === activeSpaceId 
-        ? { ...s, columns: (s.columns || DEFAULT_COLUMNS).filter(c => c !== columnName) } 
-        : s
-    ));
+    const currentSpace = spaces.find(s => s.id === activeSpaceId);
+    if (!currentSpace) return;
     
-    setTasks(prev => {
-      const currentActiveSpace = spaces.find(s => s.id === activeSpaceId);
-      const remainingColumns = ((currentActiveSpace?.columns || DEFAULT_COLUMNS).filter(c => c !== columnName));
-      const fallbackStatus = remainingColumns[0] || 'Te doen';
-      return prev.map(t => t.status === columnName && t.spaceId === activeSpaceId ? { ...t, status: fallbackStatus } : t);
-    });
+    const updatedColumns = [...(currentSpace.columns || DEFAULT_COLUMNS), name];
+    
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/spaces/${activeSpaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ columns: updatedColumns })
+      });
+      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
+      setNewColumnName('');
+      setIsAddingColumn(false);
+    } catch (error) {
+      console.error('Fout bij toevoegen kolom:', error);
+    }
   }, [activeSpaceId, spaces]);
 
-  const renameColumn = React.useCallback((oldName: string, newName: string) => {
-    if (!newName.trim() || oldName === newName) return;
-    setSpaces(prev => prev.map(s => 
-      s.id === activeSpaceId 
-        ? { ...s, columns: (s.columns || DEFAULT_COLUMNS).map(c => c === oldName ? newName : c) } 
-        : s
-    ));
-    setTasks(prev => prev.map(t => t.status === oldName && t.spaceId === activeSpaceId ? { ...t, status: newName } : t));
-  }, [activeSpaceId]);
+  const removeColumn = React.useCallback(async (columnName: string) => {
+    const currentActiveSpace = spaces.find(s => s.id === activeSpaceId);
+    if (!currentActiveSpace) return;
+    
+    const updatedColumns = (currentActiveSpace.columns || DEFAULT_COLUMNS).filter(c => c !== columnName);
+    
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/spaces/${activeSpaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ columns: updatedColumns })
+      });
+      
+      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
+      setTasks(prev => {
+        const fallbackStatus = updatedColumns[0] || 'Te doen';
+        return prev.map(t => t.status === columnName && t.spaceId === activeSpaceId ? { ...t, status: fallbackStatus } : t);
+      });
+    } catch (error) {
+      console.error('Fout bij verwijderen kolom:', error);
+    }
+  }, [activeSpaceId, spaces]);
 
-  const reorderColumns = React.useCallback((newColumns: string[]) => {
-    setSpaces(prev => prev.map(s => 
-      s.id === activeSpaceId ? { ...s, columns: newColumns } : s
-    ));
+  const renameColumn = React.useCallback(async (oldName: string, newName: string) => {
+    if (!newName.trim() || oldName === newName) return;
+    const currentSpace = spaces.find(s => s.id === activeSpaceId);
+    if (!currentSpace) return;
+    
+    const updatedColumns = (currentSpace.columns || DEFAULT_COLUMNS).map(c => c === oldName ? newName : c);
+    
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/spaces/${activeSpaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ columns: updatedColumns })
+      });
+      
+      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
+      setTasks(prev => prev.map(t => t.status === oldName && t.spaceId === activeSpaceId ? { ...t, status: newName } : t));
+    } catch (error) {
+      console.error('Fout bij hernoemen kolom:', error);
+    }
+  }, [activeSpaceId, spaces]);
+
+  const reorderColumns = React.useCallback(async (newColumns: string[]) => {
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/spaces/${activeSpaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ columns: newColumns })
+      });
+      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: newColumns } : s));
+    } catch (error) {
+      console.error('Fout bij herschikken kolommen:', error);
+    }
   }, [activeSpaceId]);
 
   const deleteTask = React.useCallback(async (taskId: string) => {
@@ -432,32 +494,24 @@ export default function App() {
     }
   }, []);
 
-  const renameTask = React.useCallback((taskId: string, newTitle: string) => {
+  const renameTask = React.useCallback(async (taskId: string, newTitle: string) => {
     if (!newTitle.trim()) return;
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, title: newTitle } : t));
+    try {
+      const token = authService.getToken();
+      await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ title: newTitle })
+      });
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, title: newTitle } : t));
+    } catch (error) {
+      console.error('Fout bij hernoemen taak:', error);
+    }
   }, []);
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
     setShowAuthModal(false);
-    
-    // Load user-specific data
-    const taskKey = `niftyprojects_tasks_${user.id}`;
-    const spaceKey = `niftyprojects_spaces_${user.id}`;
-    const savedTasks = localStorage.getItem(taskKey);
-    const savedSpaces = localStorage.getItem(spaceKey);
-    
-    if (savedTasks) setTasks(JSON.parse(savedTasks));
-    else setTasks(INITIAL_TASKS);
-    
-    if (savedSpaces) {
-      const parsedSpaces = JSON.parse(savedSpaces);
-      setSpaces(parsedSpaces);
-      setActiveSpaceId(parsedSpaces[0]?.id || 'space-1');
-    } else {
-      setSpaces(INITIAL_SPACES);
-      setActiveSpaceId('space-1');
-    }
   };
 
   const handleLogout = () => {

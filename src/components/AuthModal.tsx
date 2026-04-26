@@ -136,30 +136,6 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
             </button>
           </form>
 
-          <div className="mt-6 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Testgegevens</p>
-            <div className="flex flex-col gap-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Email:</span>
-                <code className="text-[var(--color-accent)] font-bold">test@example.com</code>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-gray-500">Wachtwoord:</span>
-                <code className="text-[var(--color-accent)] font-bold">test1234</code>
-              </div>
-            </div>
-            <button 
-              onClick={() => {
-                setEmail('test@example.com');
-                setPassword('test1234');
-                setIsLogin(true);
-              }}
-              className="w-full mt-3 py-2 text-[10px] font-bold text-[var(--color-accent)] uppercase border border-orange-100 rounded-lg hover:bg-orange-50 transition-colors"
-            >
-              Invullen
-            </button>
-          </div>
-
           <div className="mt-8 text-center">
             <button 
               onClick={() => setIsLogin(!isLogin)}
