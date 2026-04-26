@@ -241,13 +241,23 @@ export default function App() {
 
   const addTask = React.useCallback(async () => {
     if (!newTaskTitle.trim()) return;
+    
+    // Determine the space ID: if in a special view, default to the first real space
+    const targetSpaceId = ['overview', 'my-tasks', 'inbox'].includes(activeSpaceId) 
+      ? (spaces[0]?.id || 'space-1') 
+      : activeSpaceId;
+    
+    // Find the target space to get its first column
+    const targetSpace = spaces.find(s => s.id === targetSpaceId);
+    const firstColumn = targetSpace?.columns?.[0] || DEFAULT_COLUMNS[0];
+
     const newTask: Task = {
       id: `task-${Date.now()}`,
       title: newTaskTitle,
       description: '',
-      status: 'Te doen',
+      status: firstColumn as Status,
       priority: 'Laag',
-      spaceId: ['overview', 'my-tasks', 'inbox'].includes(activeSpaceId) ? (spaces[0]?.id || 'space-1') : activeSpaceId,
+      spaceId: targetSpaceId,
       createdAt: new Date().toISOString()
     };
 
@@ -351,7 +361,7 @@ export default function App() {
       alert('Je moet minimaal één ruimte overhouden.');
       return;
     }
-    if (confirm('Weet je zeker dat je deze ruimte en alle bijbehorende taken wilt verwijderen?')) {
+    if (window.confirm('Weet je zeker dat je deze ruimte en alle bijbehorende taken wilt verwijderen?')) {
       try {
         const token = authService.getToken();
         await fetch(`/api/spaces/${id}`, {
@@ -464,17 +474,24 @@ export default function App() {
   }, [activeSpaceId]);
 
   const deleteTask = React.useCallback(async (taskId: string) => {
-    if (confirm('Weet je zeker dat je deze taak wilt verwijderen?')) {
-      try {
-        const token = authService.getToken();
-        await fetch(`/api/tasks/${taskId}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+    console.log('deleteTask aangeroepen voor ID:', taskId);
+    try {
+      const token = authService.getToken();
+      console.log('Token opgehaald, DELETE request sturen...');
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        console.log('Taak succesvol verwijderd van server');
         setTasks(prev => prev.filter(t => t.id !== taskId));
-      } catch (error) {
-        console.error('Fout bij verwijderen taak:', error);
+      } else {
+        const errorText = await response.text();
+        console.error('Verwijderen mislukt op server:', response.status, errorText);
       }
+    } catch (error) {
+      console.error('Fout bij verwijderen taak:', error);
     }
   }, []);
 
@@ -1273,8 +1290,9 @@ const SortableColumn = React.memo(function SortableColumn({ status, taskCount, c
                     Hernoemen
                   </button>
                   <button 
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => {
-                      if (confirm(`Weet je zeker dat je de categorie "${status}" wilt verwijderen?`)) {
+                      if (window.confirm(`Weet je zeker dat je de categorie "${status}" wilt verwijderen?`)) {
                         onRemove();
                       }
                       setIsMenuOpen(false);
@@ -1339,6 +1357,7 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
   return (
     <motion.div 
@@ -1380,6 +1399,7 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
         {!isGhost && (
           <div className="relative">
             <button 
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }}
               className="opacity-0 group-hover:opacity-100 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] p-1 rounded hover:bg-gray-100 transition-all"
             >
@@ -1389,27 +1409,70 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
             <AnimatePresence>
               {isMenuOpen && (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onPointerDown={(e) => e.stopPropagation()} 
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); setShowConfirmDelete(false); }} 
+                  />
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.95, y: -10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: -10 }}
                     className="absolute right-0 mt-1 w-40 bg-white border border-[var(--color-border)] rounded-lg shadow-xl z-50 py-1 overflow-hidden"
                   >
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setIsEditing(true); setIsMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[var(--color-text-sub)] hover:bg-gray-50 hover:text-[var(--color-text-main)] transition-colors"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                      Titel wijzigen
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); onDelete?.(task.id); setIsMenuOpen(false); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-500 hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Verwijderen
-                    </button>
+                    {!showConfirmDelete ? (
+                      <>
+                        <button 
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { e.stopPropagation(); setIsEditing(true); setIsMenuOpen(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[var(--color-text-sub)] hover:bg-gray-50 hover:text-[var(--color-text-main)] transition-colors"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          Titel wijzigen
+                        </button>
+                        <button 
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setShowConfirmDelete(true);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-500 hover:bg-red-50 transition-colors font-medium"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Verwijderen
+                        </button>
+                      </>
+                    ) : (
+                      <div className="px-3 py-2">
+                        <p className="text-[10px] text-[var(--color-text-main)] font-bold mb-2 uppercase">Zeker weten?</p>
+                        <div className="flex gap-2">
+                          <button 
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => { e.stopPropagation(); setShowConfirmDelete(false); }}
+                            className="flex-1 py-1 text-[10px] bg-gray-100 rounded hover:bg-gray-200 font-bold"
+                          >
+                            Nee
+                          </button>
+                          <button 
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              onDelete?.(task.id); 
+                              setIsMenuOpen(false);
+                              setShowConfirmDelete(false);
+                            }}
+                            className="flex-1 py-1 text-[10px] bg-red-500 text-white rounded hover:bg-red-600 font-bold"
+                          >
+                            Ja
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </motion.div>
                 </>
               )}
@@ -1432,6 +1495,7 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-[var(--color-border)]">
@@ -1494,7 +1558,11 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
                 </td>
                 <td className="px-6 py-4 text-right pr-6 relative">
                   <button 
-                    onClick={() => setMenuOpenId(menuOpenId === task.id ? null : task.id)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpenId(menuOpenId === task.id ? null : task.id);
+                    }}
                     className="text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] p-1 rounded hover:bg-gray-100 transition-all"
                   >
                     <MoreHorizontal className="w-4 h-4" />
@@ -1503,34 +1571,75 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
                   <AnimatePresence>
                     {menuOpenId === task.id && (
                       <>
-                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpenId(null)} />
+                        <div 
+                          className="fixed inset-0 z-40" 
+                          onPointerDown={(e) => e.stopPropagation()} 
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={() => { setMenuOpenId(null); setConfirmDeleteId(null); }} 
+                        />
                         <motion.div 
                           initial={{ opacity: 0, scale: 0.95, y: -10 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95, y: -10 }}
                           className="absolute right-6 mt-1 w-40 bg-white border border-[var(--color-border)] rounded-lg shadow-xl z-50 py-1 overflow-hidden text-left"
                         >
-                          <button 
-                            onClick={() => {
-                              setEditTitle(task.title);
-                              setEditingId(task.id);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[var(--color-text-sub)] hover:bg-gray-50 hover:text-[var(--color-text-main)] transition-colors"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            Naam wijzigen
-                          </button>
-                          <button 
-                            onClick={() => {
-                              onDeleteTask(task.id);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            Verwijderen
-                          </button>
+                          {confirmDeleteId !== task.id ? (
+                            <>
+                              <button 
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditTitle(task.title);
+                                  setEditingId(task.id);
+                                  setMenuOpenId(null);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-[var(--color-text-sub)] hover:bg-gray-50 hover:text-[var(--color-text-main)] transition-colors"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                Naam wijzigen
+                              </button>
+                              <button 
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteId(task.id);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-red-500 hover:bg-red-50 transition-colors font-medium"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Verwijderen
+                              </button>
+                            </>
+                          ) : (
+                            <div className="px-3 py-2">
+                              <p className="text-[10px] text-[var(--color-text-main)] font-bold mb-2 uppercase">Zeker weten?</p>
+                              <div className="flex gap-2">
+                                <button 
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                  className="flex-1 py-1 text-[10px] bg-gray-100 rounded hover:bg-gray-200 font-bold"
+                                >
+                                  Nee
+                                </button>
+                                <button 
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeleteTask(task.id);
+                                    setMenuOpenId(null);
+                                    setConfirmDeleteId(null);
+                                  }}
+                                  className="flex-1 py-1 text-[10px] bg-red-500 text-white rounded hover:bg-red-600 font-bold"
+                                >
+                                  Ja
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </motion.div>
                       </>
                     )}
