@@ -8,6 +8,7 @@ import {
   LayoutDashboard, 
   List, 
   Plus, 
+  PlusCircle,
   Settings, 
   Layers, 
   Search, 
@@ -829,22 +830,24 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col bg-[var(--color-bg)] overflow-hidden w-full">
         {/* Header */}
-        <header className="bg-[var(--color-sidebar)] border-b border-[var(--color-border)] px-4 lg:px-8 py-3 lg:h-[64px] flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-8">
+        <header className="bg-white border-b border-[var(--color-border)] px-4 lg:px-8 py-2 lg:h-[64px] flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-8">
           {/* Mobile Header Top Row */}
           <div className="flex items-center justify-between w-full lg:hidden">
-            <button 
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className="p-2 text-[var(--color-text-main)] hover:bg-white/10 rounded-lg"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-            <div className="text-[13px] text-[var(--color-text-sub)] truncate px-2 font-semibold">
-              {activeSpace.name}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="p-1.5 text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <div className="text-[14px] text-[var(--color-text-main)] truncate font-bold">
+                {activeSpace.name}
+              </div>
             </div>
           </div>
 
-          {/* Left Group: Breadcrumb + View Switcher */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 lg:gap-6 flex-1 min-w-0">
+          {/* Left Group: Breadcrumb + View Switcher + Add Column */}
+          <div className="flex items-center gap-3 lg:gap-6 flex-1 min-w-0">
             {/* Desktop Sidebar Expand Button (Shown when sidebar is fixed but collapsed elsewhere) */}
             {isSidebarCollapsed && (
               <button 
@@ -856,28 +859,76 @@ export default function App() {
               </button>
             )}
 
-            {/* View Switcher */}
-            <div className="flex bg-[var(--color-bg)] p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
-              <button 
-                onClick={() => setView('board')}
-                className={`flex items-center justify-center gap-2 px-5 py-1.5 rounded-md text-[13px] font-semibold transition-all ${
-                  view === 'board' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
-                }`}
-              >
-                Bord
-              </button>
-              <button 
-                onClick={() => setView('list')}
-                className={`flex items-center justify-center gap-2 px-5 py-1.5 rounded-md text-[13px] font-semibold transition-all ${
-                  view === 'list' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
-                }`}
-              >
-                Lijst
-              </button>
+            <div className="flex items-center gap-2">
+              {/* View Switcher */}
+              <div className="flex bg-gray-50 p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
+                <button 
+                  onClick={() => setView('board')}
+                  className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
+                    view === 'board' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
+                  }`}
+                >
+                  Bord
+                </button>
+                <button 
+                  onClick={() => setView('list')}
+                  className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
+                    view === 'list' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
+                  }`}
+                >
+                  Lijst
+                </button>
+              </div>
+
+              {/* Nieuwe categorie button (Moved here) */}
+              <div className="relative">
+                <button 
+                  onClick={() => setIsAddingColumn(true)}
+                  className="p-1.5 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all border border-transparent hover:border-[var(--color-border)]"
+                  title="Nieuwe categorie toevoegen"
+                >
+                  <PlusCircle className="w-5 h-5 sm:w-6 s-6" />
+                </button>
+                  
+                  <AnimatePresence>
+                    {isAddingColumn && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                        className="absolute left-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-[var(--color-border)] z-50 p-4"
+                      >
+                        <p className="text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">Nieuwe categorie</p>
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Naam bijv. 'Wachten'..."
+                          className="w-full bg-gray-50 border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:border-[var(--color-accent)]"
+                          value={newColumnName}
+                          onChange={(e) => setNewColumnName(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && addColumn(newColumnName)}
+                        />
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setIsAddingColumn(false)}
+                            className="flex-1 px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 rounded"
+                          >
+                            Annuleren
+                          </button>
+                          <button 
+                            onClick={() => addColumn(newColumnName)}
+                            className="flex-1 px-3 py-1.5 text-xs font-bold bg-[var(--color-accent)] text-white rounded"
+                          >
+                            Toevoegen
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
             </div>
           </div>
 
-          {/* Right Group: Actions */}
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-3 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)] px-3 py-1.5 mr-2">
               <ZoomOut className="w-3.5 h-3.5 text-[var(--color-text-sub)]" />
@@ -901,52 +952,7 @@ export default function App() {
                 {zoomLevel}%
               </span>
             </div>
-            <div className="relative">
-              <button 
-                onClick={() => setIsAddingColumn(true)}
-                className="p-2 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all"
-                title="Nieuwe categorie toevoegen"
-              >
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
-                
-                <AnimatePresence>
-                  {isAddingColumn && (
-                    <motion.div 
-                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                      className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-[var(--color-border)] z-50 p-4"
-                    >
-                      <p className="text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">Nieuwe categorie</p>
-                      <input 
-                        autoFocus
-                        type="text"
-                        placeholder="Naam bijv. 'Wachten'..."
-                        className="w-full bg-gray-50 border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:border-[var(--color-accent)]"
-                        value={newColumnName}
-                        onChange={(e) => setNewColumnName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addColumn(newColumnName)}
-                      />
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => setIsAddingColumn(false)}
-                          className="flex-1 px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 rounded"
-                        >
-                          Annuleren
-                        </button>
-                        <button 
-                          onClick={() => addColumn(newColumnName)}
-                          className="flex-1 px-3 py-1.5 text-xs font-bold bg-[var(--color-accent)] text-white rounded"
-                        >
-                          Toevoegen
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
+          </div>
         </header>
 
         {/* View Content */}
@@ -1198,7 +1204,7 @@ const SortableColumn = React.memo(function SortableColumn({ status, taskCount, c
     <div 
       ref={setNodeRef}
       style={style}
-      className={`w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[320px] flex flex-col gap-4 p-3 rounded-2xl border border-[var(--color-border)] bg-gray-200/80 transition-all ${
+      className={`w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[320px] flex flex-col gap-4 p-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-column-bg)] transition-all ${
         isDragging ? 'opacity-30' : ''
       }`}
     >
