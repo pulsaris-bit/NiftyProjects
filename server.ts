@@ -13,6 +13,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 
+import fs from 'fs';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,8 +23,14 @@ const __dirname = path.dirname(__filename);
 const JWT_SECRET = process.env.JWT_SECRET || 'nifty-secret-key-12345';
 const PORT = 3000;
 
-// Initialize Database
-const db = new Database('database.sqlite');
+// Ensure data directory exists for database
+const dataDir = path.join(process.cwd(), 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+// Initialize Database in the data directory
+const db = new Database(path.join(dataDir, 'database.sqlite'));
 db.pragma('journal_mode = WAL');
 
 // Create Tables
