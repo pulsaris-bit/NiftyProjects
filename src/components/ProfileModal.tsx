@@ -20,11 +20,11 @@ export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
   const [avatar, setAvatar] = useState(user.avatar || '');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const updated = authService.updateProfile({ name, avatar });
+      const updated = await authService.updateProfile({ name, avatar });
       onUpdate(updated);
       onClose();
     } catch (error) {

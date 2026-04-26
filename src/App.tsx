@@ -137,7 +137,6 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 280;
   });
   const [isResizing, setIsResizing] = useState(false);
-  const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   
   const [currentUser, setCurrentUser] = useState<User | null>(() => authService.getSession());
@@ -287,7 +286,6 @@ export default function App() {
       });
       setTasks(prev => [newTask, ...prev]);
       setNewTaskTitle('');
-      setIsAddingTask(false);
     } catch (error) {
       console.error('Fout bij opslaan taak:', error);
     }
@@ -806,12 +804,6 @@ export default function App() {
             <div className="text-[13px] text-[var(--color-text-sub)] truncate px-2 font-semibold">
               {activeSpace.name}
             </div>
-            <button 
-              onClick={() => setIsAddingTask(true)}
-              className="bg-[var(--color-accent)] text-white p-2 rounded-lg shadow-sm"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
           </div>
 
           {/* Left Group: Breadcrumb + View Switcher */}
@@ -872,13 +864,6 @@ export default function App() {
                 {zoomLevel}%
               </span>
             </div>
-            <button 
-              onClick={() => setIsAddingTask(true)}
-              className="hidden sm:flex bg-[var(--color-accent)] text-white px-4 py-2 rounded-lg text-[13px] font-bold hover:opacity-90 transition-all items-center gap-2 shadow-sm shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Nieuwe Taak</span>
-            </button>
             <div className="relative">
               <button 
                 onClick={() => setIsAddingColumn(true)}
@@ -929,37 +914,27 @@ export default function App() {
 
         {/* View Content */}
         <div className="flex-1 overflow-auto p-4 lg:p-8 font-sans custom-scrollbar" style={{ zoom: zoomLevel / 100 }}>
-          {isAddingTask && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mb-8 p-4 bg-white rounded-lg shadow-sm border border-[var(--color-border)] flex gap-4"
-            >
-              <input 
-                autoFocus
-                type="text" 
-                placeholder="Wat moet er gebeuren?"
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                className="flex-1 text-sm border-none focus:ring-0 p-0 outline-none text-[var(--color-text-main)]"
-              />
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setIsAddingTask(false)}
-                  className="px-3 py-1.5 text-[var(--color-text-sub)] hover:bg-gray-50 rounded text-xs font-semibold"
-                >
-                  Annuleren
-                </button>
-                <button 
-                  onClick={addTask}
-                  className="px-3 py-1.5 bg-[var(--color-accent)] text-white rounded text-xs font-semibold"
-                >
-                  Opslaan
-                </button>
-              </div>
-            </motion.div>
-          )}
+          <div className="mb-8 p-4 bg-white rounded-2xl shadow-sm border border-[var(--color-border)] flex items-center gap-4 transition-all focus-within:ring-4 focus-within:ring-orange-50 focus-within:border-[var(--color-accent)]">
+            <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-[var(--color-accent)] shrink-0">
+              <Plus className="w-5 h-5" />
+            </div>
+            <input 
+              type="text" 
+              placeholder="Snel een nieuwe taak toevoegen... (Druk op Enter)"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addTask()}
+              className="flex-1 text-sm border-none focus:ring-0 p-0 outline-none text-[var(--color-text-main)] font-medium placeholder:text-gray-400"
+            />
+            {newTaskTitle.trim() && (
+              <button 
+                onClick={addTask}
+                className="px-4 py-2 bg-[var(--color-accent)] text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-100 hover:opacity-90 transition-all shrink-0"
+              >
+                Toevoegen
+              </button>
+            )}
+          </div>
 
           <AnimatePresence mode="wait">
             {view === 'board' ? (
