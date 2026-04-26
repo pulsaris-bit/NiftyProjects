@@ -192,29 +192,6 @@ export default function App() {
     loadData();
   }, [currentUser]);
 
-  // Sync tasks to backend
-  const lastTasksRef = React.useRef(JSON.stringify(tasks));
-  useEffect(() => {
-    const currentTasksJson = JSON.stringify(tasks);
-    if (!currentUser || currentTasksJson === lastTasksRef.current) return;
-    
-    // Simple debounced-like sync (or we could update on every change)
-    // For now, let's just use a ref to prevent loops from the initial load
-    lastTasksRef.current = currentTasksJson;
-    
-    const token = authService.getToken();
-    // In a real app we'd only sync the DELTA, but here we replace or sync individual actions
-    // For simplicity with the existing code structure, we'll keep local state as primary and sync
-  }, [tasks, currentUser]);
-
-  // Sync spaces to backend
-  const lastSpacesRef = React.useRef(JSON.stringify(spaces));
-  useEffect(() => {
-    const currentSpacesJson = JSON.stringify(spaces);
-    if (!currentUser || currentSpacesJson === lastSpacesRef.current) return;
-    lastSpacesRef.current = currentSpacesJson;
-  }, [spaces, currentUser]);
-
   useEffect(() => {
     if (isResizing) {
       const handleMouseMove = (e: MouseEvent) => {
@@ -1100,6 +1077,8 @@ function BoardView({ tasks, allTasks, setTasks, activeSpaceId, searchQuery, colu
         
         return newTasks;
       });
+      // Save status change to backend
+      onStatusChange(activeId as string, overStatus as Status);
     }
   };
 
@@ -1442,18 +1421,11 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between mt-1">
+        <div className="flex items-center justify-between mt-1">
         <PriorityMenu current={task.priority} onSelect={(p) => onPriorityChange(task.id, p)} />
         <div className="flex items-center gap-2">
           <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} />
-          {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
-            <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-sub)] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
-              <ListTodo className="w-2.5 h-2.5" />
-              <span className="font-medium">
-                {task.subtasks.filter(st => st && st.completed).length}/{task.subtasks.length}
-              </span>
-            </div>
-          )}
+          <SubtaskProgress task={task} />
         </div>
       </div>
     </motion.div>
@@ -1510,20 +1482,13 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
                     ) : (
                       <div className="flex items-center gap-2">
                         {task.title}
-                        {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
-                          <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-sub)] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
-                            <ListTodo className="w-2.5 h-2.5" />
-                            <span className="font-medium">
-                              {task.subtasks.filter(st => st && st.completed).length}/{task.subtasks.length}
-                            </span>
-                          </div>
-                        )}
+                        <SubtaskProgress task={task} />
                       </div>
                     )}
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} isSmall />
+                  <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} />
                 </td>
                 <td className="px-6 py-4">
                   <PriorityMenu current={task.priority} onSelect={(p) => onPriorityChange(task.id, p)} />
@@ -1591,24 +1556,42 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
   );
 }
 
+const PRIORITY_STYLES: Record<Priority, string> = {
+  'Laag': 'bg-gray-200 text-gray-600',
+  'Gemiddeld': 'bg-[#fde68a] text-[#d97706]',
+  'Hoog': 'bg-[#fecaca] text-[#ef4444]',
+  'Urgent': 'bg-red-500 text-white'
+};
+
+const STATUS_COLORS: Record<Status, string> = {
+  'Te doen': 'bg-gray-100 text-gray-600',
+  'Bezig': 'bg-blue-100 text-blue-600',
+  'Klaar': 'bg-emerald-100 text-emerald-600'
+};
+
+function SubtaskProgress({ task }: { task: Task }) {
+  if (!Array.isArray(task.subtasks) || task.subtasks.length === 0) return null;
+  
+  const completed = task.subtasks.filter(st => st && st.completed).length;
+  const total = task.subtasks.length;
+  
+  return (
+    <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-sub)] bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 shrink-0">
+      <ListTodo className="w-2.5 h-2.5" />
+      <span className="font-medium">{completed}/{total}</span>
+    </div>
+  );
+}
+
 const PriorityMenu = React.memo(function PriorityMenu({ current, onSelect }: { current: Priority, onSelect: (p: Priority) => void }) {
   const [open, setOpen] = useState(false);
   const priorities: Priority[] = ['Laag', 'Gemiddeld', 'Hoog', 'Urgent'];
-
-  const styles: Record<string, string> = {
-    'Laag': 'bg-gray-200 text-gray-600',
-    'Gemiddeld': 'bg-[#fde68a] text-[#d97706]',
-    'Hoog': 'bg-[#fecaca] text-[#ef4444]',
-    'Urgent': 'bg-red-500 text-white'
-  };
-
-  const currentStyleClass = styles[current] || 'bg-gray-100 text-gray-500';
 
   return (
     <div className="relative">
       <button 
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-all hover:opacity-80 cursor-pointer ${currentStyleClass}`}
+        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide transition-all hover:opacity-80 cursor-pointer ${PRIORITY_STYLES[current] || 'bg-gray-100 text-gray-500'}`}
       >
         {current}
       </button>
@@ -1629,7 +1612,7 @@ const PriorityMenu = React.memo(function PriorityMenu({ current, onSelect }: { c
                   onClick={(e) => { e.stopPropagation(); onSelect(p); setOpen(false); }}
                   className={`w-full text-left px-3 py-2 text-[11px] font-semibold hover:bg-gray-50 flex items-center gap-2 ${p === current ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-sub)]'}`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${(styles[p] || 'bg-gray-400').split(' ')[0]}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${(PRIORITY_STYLES[p] || 'bg-gray-400').split(' ')[0]}`} />
                   {p}
                 </button>
               ))}
@@ -1641,27 +1624,15 @@ const PriorityMenu = React.memo(function PriorityMenu({ current, onSelect }: { c
   );
 });
 
-const StatusMenu = React.memo(function StatusMenu({ current, onSelect, isSmall }: { current: Status, onSelect: (s: Status) => void, isSmall?: boolean }) {
+const StatusMenu = React.memo(function StatusMenu({ current, onSelect }: { current: Status, onSelect: (s: Status) => void }) {
   const [open, setOpen] = useState(false);
   const statuses: Status[] = ['Te doen', 'Bezig', 'Klaar'];
-
-  const colors: Record<string, string> = {
-    'Te doen': 'bg-gray-200 text-gray-600',
-    'Bezig': 'bg-blue-100 text-blue-600',
-    'Low': 'bg-blue-100 text-blue-600',
-    'Medium': 'bg-blue-100 text-blue-600',
-    'High': 'bg-orange-100 text-orange-600',
-    'Klaar': 'bg-emerald-100 text-emerald-600',
-    'Urgent': 'bg-red-100 text-red-600'
-  };
-
-  const currentColorClass = colors[current] || 'bg-gray-100 text-gray-500';
 
   return (
     <div className="relative">
       <button 
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className={`flex items-center gap-1.5 rounded font-bold transition-colors ${isSmall ? 'text-[10px] px-1.5 py-0.5' : 'text-[10px] px-1.5 py-0.5'} ${currentColorClass} uppercase tracking-wider`}
+        className={`flex items-center gap-1.5 rounded font-bold transition-colors text-[10px] px-1.5 py-0.5 ${STATUS_COLORS[current] || 'bg-gray-100 text-gray-500'} uppercase tracking-wider`}
       >
         {current}
         <ChevronRight className={`w-3 h-3 transition-transform ${open ? 'rotate-90' : ''}`} />
@@ -1683,7 +1654,7 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, isSmall }
                   onClick={(e) => { e.stopPropagation(); onSelect(s); setOpen(false); }}
                   className={`w-full text-left px-3 py-2 text-[11px] font-semibold hover:bg-gray-50 flex items-center gap-2 ${s === current ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-sub)]'}`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${(colors[s] || 'bg-gray-400').split(' ')[0]}`} />
+                  <div className={`w-1.5 h-1.5 rounded-full ${(STATUS_COLORS[s] || 'bg-gray-400').split(' ')[0]}`} />
                   {s}
                 </button>
               ))}
@@ -1694,6 +1665,7 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, isSmall }
     </div>
   );
 });
+
 
 function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void }) {
   return (
@@ -1714,12 +1686,7 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
         {/* Header */}
         <div className="px-8 py-6 border-b border-[var(--color-border)] flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-              task.priority === 'Urgent' ? 'bg-red-100 text-red-600' :
-              task.priority === 'Hoog' ? 'bg-orange-100 text-orange-600' :
-              task.priority === 'Gemiddeld' ? 'bg-blue-100 text-blue-600' :
-              'bg-gray-100 text-gray-600'
-            }`}>
+            <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${PRIORITY_STYLES[task.priority] || 'bg-gray-100 text-gray-600'}`}>
               {task.priority}
             </div>
             <h2 className="text-xl font-semibold text-[var(--color-text-main)] truncate max-w-2xl">{task.title}</h2>

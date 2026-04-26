@@ -21,6 +21,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'nifty-secret-key-12345';
+
+if (JWT_SECRET === 'nifty-secret-key-12345') {
+  console.warn('WAARSCHUWING: Er wordt een standaard JWT_SECRET gebruikt. Stel een JWT_SECRET omgevingsvariabele in voor productie.');
+}
+
 const PORT = 3000;
 
 // Ensure data directory exists for database
@@ -64,6 +69,7 @@ db.exec(`
     status TEXT NOT NULL,
     priority TEXT NOT NULL,
     link TEXT,
+    dueDate TEXT,
     subtasks TEXT, -- JSON string
     attachments TEXT, -- JSON string
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -71,6 +77,18 @@ db.exec(`
     FOREIGN KEY (spaceId) REFERENCES spaces(id)
   );
 `);
+
+// Migration: Ensure dueDate column exists
+try {
+  db.prepare('SELECT dueDate FROM tasks LIMIT 1').get();
+} catch (e) {
+  try {
+    db.exec('ALTER TABLE tasks ADD COLUMN dueDate TEXT');
+    console.log('Database gemigreerd: dueDate kolom toegevoegd aan tasks.');
+  } catch (err) {
+    console.error('Migratiefout:', err);
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -94,6 +112,8 @@ const authenticateToken = (req: any, res: any, next: any) => {
 
 app.post('/api/auth/signup', async (req, res) => {
   const { name, email, password, avatar } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Naam, e-mail en wachtwoord zijn verplicht' });
+  
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = `user-${Date.now()}`;
@@ -105,25 +125,28 @@ app.post('/api/auth/signup', async (req, res) => {
     const spaceStmt = db.prepare('INSERT INTO spaces (id, userId, name, emoji, icon, color, columns) VALUES (?, ?, ?, ?, ?, ?, ?)');
     spaceStmt.run(`space-${Date.now()}`, userId, 'Algemeen', '📁', 'Layers', '#FF5733', JSON.stringify(['Te doen', 'Bezig', 'Klaar']));
 
-    const token = jwt.sign({ id: userId, email }, JWT_SECRET);
+    const token = jwt.sign({ id: userId, email }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, user: { id: userId, name, email, avatar } });
   } catch (error: any) {
     if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       return res.status(400).json({ error: 'E-mailadres al in gebruik' });
     }
+    console.error('Signup error:', error);
     res.status(500).json({ error: 'Server fout' });
   }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'E-mail en wachtwoord zijn verplicht' });
+
   const user: any = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(400).json({ error: 'Ongeldige inloggegevens' });
   }
 
-  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
+  const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar } });
 });
 
@@ -179,8 +202,8 @@ app.get('/api/tasks', authenticateToken, (req: any, res) => {
 app.post('/api/tasks', authenticateToken, (req: any, res) => {
   const task = req.body;
   const stmt = db.prepare(`
-    INSERT INTO tasks (id, userId, spaceId, title, description, status, priority, link, subtasks, attachments, createdAt) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (id, userId, spaceId, title, description, status, priority, link, dueDate, subtasks, attachments, createdAt) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     task.id, 
@@ -191,6 +214,7 @@ app.post('/api/tasks', authenticateToken, (req: any, res) => {
     task.status, 
     task.priority, 
     task.link || '', 
+    task.dueDate || null,
     JSON.stringify(task.subtasks || []), 
     JSON.stringify(task.attachments || []),
     task.createdAt
@@ -200,7 +224,6 @@ app.post('/api/tasks', authenticateToken, (req: any, res) => {
 
 app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
   const updates = req.body;
-  // Dynamic update is tricky in SQLite with better-sqlite3 but for simplicity we'll just handle known fields or replace
   const current: any = db.prepare('SELECT * FROM tasks WHERE id = ? AND userId = ?').get(req.params.id, req.user.id);
   if (!current) return res.status(404).json({ error: 'Taak niet gevonden' });
 
@@ -211,7 +234,7 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
   const updated = { ...current, ...updates };
   const stmt = db.prepare(`
     UPDATE tasks 
-    SET spaceId = ?, title = ?, description = ?, status = ?, priority = ?, link = ?, subtasks = ?, attachments = ?
+    SET spaceId = ?, title = ?, description = ?, status = ?, priority = ?, link = ?, dueDate = ?, subtasks = ?, attachments = ?
     WHERE id = ? AND userId = ?
   `);
   stmt.run(
@@ -221,6 +244,7 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
     updated.status,
     updated.priority,
     updated.link,
+    updated.dueDate || null,
     JSON.stringify(updated.subtasks || []),
     JSON.stringify(updated.attachments || []),
     req.params.id,
