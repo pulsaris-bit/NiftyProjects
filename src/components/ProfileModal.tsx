@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, User, Mail, Camera, Check } from 'lucide-react';
+import { X, User, Mail, Camera, Check, LogOut } from 'lucide-react';
 import { User as UserType } from '../types';
 import { authService } from '../lib/authService';
 
@@ -13,9 +13,10 @@ interface ProfileModalProps {
   user: UserType;
   onClose: () => void;
   onUpdate: (user: UserType) => void;
+  onLogout?: () => void;
 }
 
-export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
+export function ProfileModal({ user, onClose, onUpdate, onLogout }: ProfileModalProps) {
   const [name, setName] = useState(user.name);
   const [avatar, setAvatar] = useState(user.avatar || '');
   const [loading, setLoading] = useState(false);
@@ -122,6 +123,18 @@ export function ProfileModal({ user, onClose, onUpdate }: ProfileModalProps) {
               {loading ? 'Laden...' : 'Opslaan'}
             </button>
           </form>
+
+          {onLogout && (
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <button 
+                onClick={onLogout}
+                className="w-full py-3 bg-red-50 text-red-600 rounded-xl font-semibold hover:bg-red-100 transition-all flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Log uit
+              </button>
+            </div>
+          )}
         </div>
       </motion.div>
     </div>
