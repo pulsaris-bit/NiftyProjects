@@ -1351,11 +1351,26 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
   const [editTitle, setEditTitle] = useState(task.title);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const taskDate = task.dueDate ? new Date(task.dueDate) : null;
+  if (taskDate) taskDate.setHours(0, 0, 0, 0);
+
+  const isOverdue = taskDate && task.status !== 'Klaar' && taskDate < today;
+  const isDueTomorrow = taskDate && task.status !== 'Klaar' && taskDate.getTime() === tomorrow.getTime();
+
   return (
     <motion.div 
       layout={!isGhost}
       onClick={() => !isEditing && onOpenDetails?.(task.id)}
-      className={`p-4 bg-white rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.1)] border border-[var(--color-border)] group hover:shadow-md transition-shadow cursor-pointer active:cursor-grabbing flex flex-col gap-3 relative ${isGhost ? 'rotate-2 shadow-xl ring-2 ring-[var(--color-accent)] border-transparent' : ''}`}
+      className={`p-4 rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.1)] border group hover:shadow-md transition-shadow cursor-pointer active:cursor-grabbing flex flex-col gap-3 relative ${
+        isOverdue ? 'bg-red-50 border-red-200' : 
+        isDueTomorrow ? 'bg-orange-50 border-orange-200' : 
+        'bg-white border-[var(--color-border)]'
+      } ${isGhost ? 'rotate-2 shadow-xl ring-2 ring-[var(--color-accent)] border-transparent' : ''}`}
     >
       <div className="flex justify-between items-start gap-2">
         <div className="flex-1">
@@ -1382,7 +1397,8 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <h4 className="text-sm font-medium text-[var(--color-text-main)] leading-relaxed">
+            <h4 className="text-sm font-medium text-[var(--color-text-main)] leading-relaxed flex items-center gap-1.5">
+              {isOverdue && <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
               {task.title}
             </h4>
           )}
@@ -1474,8 +1490,12 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
       </div>
 
       {task.dueDate && (
-        <div className="flex items-center gap-1.5 text-[10px] font-medium text-[var(--color-text-sub)]">
-          <Calendar className="w-3 h-3" />
+        <div className={`flex items-center gap-1.5 text-[10px] font-medium ${
+          isOverdue ? 'text-red-600' : 
+          isDueTomorrow ? 'text-orange-600' : 
+          'text-[var(--color-text-sub)]'
+        }`}>
+          {isOverdue ? <AlertCircle className="w-3 h-3" /> : <Calendar className="w-3 h-3" />}
           {new Date(task.dueDate).toLocaleDateString()}
         </div>
       )}
@@ -1511,51 +1531,72 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
-            {tasks.map(task => (
-              <tr 
-                key={task.id} 
-                onClick={() => onOpenTaskDetails(task.id)}
-                className="hover:bg-gray-50 transition-colors group cursor-pointer"
-              >
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3 text-sm font-medium text-[var(--color-text-main)]">
-                    {editingId === task.id ? (
-                      <input 
-                        autoFocus
-                        className="text-sm font-medium text-[var(--color-text-main)] bg-white border border-[var(--color-accent)] rounded px-2 py-1 outline-none w-full shadow-sm"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onBlur={() => {
-                          onRenameTask(task.id, editTitle);
-                          setEditingId(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+            {tasks.map(task => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const tomorrow = new Date(today);
+              tomorrow.setDate(tomorrow.getDate() + 1);
+
+              const taskDate = task.dueDate ? new Date(task.dueDate) : null;
+              if (taskDate) taskDate.setHours(0, 0, 0, 0);
+
+              const isOverdue = taskDate && task.status !== 'Klaar' && taskDate < today;
+              const isDueTomorrow = taskDate && task.status !== 'Klaar' && taskDate.getTime() === tomorrow.getTime();
+
+              return (
+                <tr 
+                  key={task.id} 
+                  onClick={() => onOpenTaskDetails(task.id)}
+                  className={`transition-colors group cursor-pointer ${
+                    isOverdue ? 'bg-red-50 hover:bg-red-100' : 
+                    isDueTomorrow ? 'bg-orange-50 hover:bg-orange-100' : 
+                    'hover:bg-gray-50'
+                  }`}
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3 text-sm font-medium text-[var(--color-text-main)]">
+                      {editingId === task.id ? (
+                        <input 
+                          autoFocus
+                          className="text-sm font-medium text-[var(--color-text-main)] bg-white border border-[var(--color-accent)] rounded px-2 py-1 outline-none w-full shadow-sm"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onBlur={() => {
                             onRenameTask(task.id, editTitle);
                             setEditingId(null);
-                          }
-                          if (e.key === 'Escape') {
-                            setEditingId(null);
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        {task.title}
-                        <SubtaskProgress task={task} />
-                      </div>
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} />
-                </td>
-                <td className="px-6 py-4">
-                  <PriorityMenu current={task.priority} onSelect={(p) => onPriorityChange(task.id, p)} />
-                </td>
-                <td className="px-6 py-4 text-xs text-[var(--color-text-sub)]">
-                  {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : '—'}
-                </td>
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              onRenameTask(task.id, editTitle);
+                              setEditingId(null);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingId(null);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {isOverdue && <AlertCircle className="w-3.5 h-3.5 text-red-500 mr-1" />}
+                          {task.title}
+                          <SubtaskProgress task={task} />
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} />
+                  </td>
+                  <td className="px-6 py-4">
+                    <PriorityMenu current={task.priority} onSelect={(p) => onPriorityChange(task.id, p)} />
+                  </td>
+                  <td className={`px-6 py-4 text-xs ${
+                    isOverdue ? 'text-red-600 font-bold' : 
+                    isDueTomorrow ? 'text-orange-600 font-bold' : 
+                    'text-[var(--color-text-sub)]'
+                  }`}>
+                    {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : '—'}
+                  </td>
                 <td className="px-6 py-4 text-right pr-6 relative">
                   <button 
                     onPointerDown={(e) => e.stopPropagation()}
@@ -1646,8 +1687,9 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
                   </AnimatePresence>
                 </td>
               </tr>
-            ))}
-            {tasks.length === 0 && (
+            );
+          })}
+          {tasks.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-[var(--color-text-sub)] text-[13px] italic">
                   Geen taken gevonden in deze ruimte.
