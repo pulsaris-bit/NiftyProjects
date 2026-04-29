@@ -26,7 +26,6 @@ export interface Task {
   priority: Priority;
   spaceId: string;
   dueDate?: string;
-  createdAt: string;
   isDeleted?: boolean;
   deletedAt?: string;
   attachments?: Attachment[];
@@ -39,7 +38,6 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
-  createdAt: string;
 }
 
 export interface Space {

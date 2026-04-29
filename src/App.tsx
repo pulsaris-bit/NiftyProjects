@@ -91,8 +91,7 @@ const INITIAL_TASKS: Task[] = [
     status: 'Bezig', 
     priority: 'Hoog', 
     spaceId: 'space-1', 
-    dueDate: '2024-05-10',
-    createdAt: new Date().toISOString() 
+    dueDate: '2024-05-10'
   },
   { 
     id: 'task-2', 
@@ -101,8 +100,7 @@ const INITIAL_TASKS: Task[] = [
     status: 'Te doen', 
     priority: 'Gemiddeld', 
     spaceId: 'space-1', 
-    dueDate: '2024-05-12',
-    createdAt: new Date().toISOString() 
+    dueDate: '2024-05-12'
   },
   { 
     id: 'task-3', 
@@ -111,8 +109,7 @@ const INITIAL_TASKS: Task[] = [
     status: 'Klaar', 
     priority: 'Urgent', 
     spaceId: 'space-2', 
-    dueDate: '2024-05-08',
-    createdAt: new Date().toISOString() 
+    dueDate: '2024-05-08'
   },
 ];
 
@@ -365,8 +362,7 @@ export default function App() {
       description: '',
       status: firstColumn as Status,
       priority: 'Laag',
-      spaceId: targetSpaceId,
-      createdAt: new Date().toISOString()
+      spaceId: targetSpaceId
     };
 
     try {
@@ -536,7 +532,7 @@ export default function App() {
     const currentSpace = spaces.find(s => s.id === activeSpaceId);
     if (!currentSpace) return;
     
-    const updatedColumns = [...(currentSpace.columns || DEFAULT_COLUMNS), name];
+    const updatedColumns = [...((currentSpace.columns && currentSpace.columns.length > 0) ? currentSpace.columns : DEFAULT_COLUMNS), name];
     
     try {
       const token = authService.getToken();
@@ -564,7 +560,7 @@ export default function App() {
     
     if (!window.confirm(`Weet je zeker dat je de kolom "${columnName}" wilt verwijderen? Alle taken in deze kolom worden naar de eerste kolom verplaatst.`)) return;
 
-    const updatedColumns = (currentActiveSpace.columns || DEFAULT_COLUMNS).filter(c => c !== columnName);
+    const updatedColumns = ((currentActiveSpace.columns && currentActiveSpace.columns.length > 0) ? currentActiveSpace.columns : DEFAULT_COLUMNS).filter(c => c !== columnName);
     
     try {
       const token = authService.getToken();
@@ -594,7 +590,7 @@ export default function App() {
     const currentSpace = spaces.find(s => s.id === activeSpaceId);
     if (!currentSpace) return;
     
-    const updatedColumns = (currentSpace.columns || DEFAULT_COLUMNS).map(c => c === oldName ? newName : c);
+    const updatedColumns = ((currentSpace.columns && currentSpace.columns.length > 0) ? currentSpace.columns : DEFAULT_COLUMNS).map(c => c === oldName ? newName : c);
     
     try {
       const token = authService.getToken();
@@ -1296,7 +1292,7 @@ export default function App() {
                 setTasks={setTasks}
                 activeSpaceId={activeSpaceId}
                 searchQuery={searchQuery}
-                columns={activeSpace.columns || DEFAULT_COLUMNS}
+                columns={(activeSpace.columns && activeSpace.columns.length > 0) ? activeSpace.columns : DEFAULT_COLUMNS}
                 onStatusChange={updateTaskStatus} 
                 onPriorityChange={updateTaskPriority}
                 onRemoveColumn={removeColumn}
@@ -2420,39 +2416,39 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative w-full max-w-6xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] md:max-h-[90vh]"
       >
         {/* Header */}
-        <div className="px-8 py-6 border-b border-[var(--color-border)] flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${PRIORITY_STYLES[task.priority] || 'bg-gray-100 text-gray-600'}`}>
+        <div className="px-5 py-4 md:px-8 md:py-5 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
+            <div className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider shrink-0 ${PRIORITY_STYLES[task.priority] || 'bg-gray-100 text-gray-600'}`}>
               {task.priority}
             </div>
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-xl font-semibold text-[var(--color-text-main)] truncate max-w-2xl">{task.title}</h2>
+            <div className="flex items-baseline gap-2 overflow-hidden">
+              <h2 className="text-lg md:text-xl font-semibold text-[var(--color-text-main)] truncate">{task.title}</h2>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+          <div className="flex items-center gap-3 shrink-0">
+            <button onClick={onClose} className="p-1.5 md:p-2 hover:bg-gray-100 rounded-full transition-colors">
               <X className="w-5 h-5 text-[var(--color-text-sub)]" />
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-          <div className="space-y-12">
+        <div className="flex-1 overflow-y-auto px-5 py-6 md:p-8 custom-scrollbar">
+          <div className="space-y-8 md:space-y-10">
             {/* Row 1: Description & Subtasks (50/50 split for maximum width) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              <div className="space-y-10">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-10">
+              <div className="space-y-6 md:space-y-8">
                 {/* Description */}
                 <section>
-                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                  <label className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2.5">
                     <FileText className="w-3.5 h-3.5" />
                     Beschrijving
                   </label>
                   <textarea 
-                    className="w-full h-64 p-4 bg-gray-50 border border-[var(--color-border)] rounded-2xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all resize-none leading-relaxed"
+                    className="w-full h-40 md:h-48 p-3.5 md:p-4 bg-gray-50 border border-[var(--color-border)] rounded-2xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all resize-none leading-relaxed"
                     placeholder="Voeg een gedetailleerde beschrijving toe..."
                     value={task.description || ''}
                     onChange={(e) => onUpdate({ description: e.target.value })}
@@ -2461,14 +2457,14 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
 
                 {/* Link */}
                 <section>
-                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                  <label className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2.5">
                     <LinkIcon className="w-3.5 h-3.5" />
                     Link (URL)
                   </label>
                   <div className="flex gap-2">
                     <input 
                       type="text"
-                      className="flex-1 p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all"
+                      className="flex-1 p-2.5 md:p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all"
                       placeholder="https://example.com"
                       value={task.link || ''}
                       onChange={(e) => onUpdate({ link: e.target.value })}
@@ -2478,7 +2474,7 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                         href={task.link.startsWith('http') ? task.link : `https://${task.link}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-3 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl hover:bg-gray-100 transition-all text-[var(--color-accent)]"
+                        className="p-2.5 md:p-3 bg-[var(--color-bg)] border border-[var(--color-border)] rounded-xl hover:bg-gray-100 transition-all text-[var(--color-accent)] shrink-0"
                       >
                         <ExternalLink className="w-5 h-5" />
                       </a>
@@ -2487,10 +2483,10 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                 </section>
               </div>
 
-              <div className="space-y-10">
+              <div className="space-y-6 md:space-y-8">
                 {/* Subtasks */}
                 <section>
-                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                  <label className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2.5">
                     <ListTodo className="w-3.5 h-3.5" />
                     Takenlijst
                   </label>
@@ -2498,7 +2494,7 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                     {(Array.isArray(task.subtasks) ? task.subtasks : []).map((sub) => {
                       if (!sub || typeof sub !== 'object') return null;
                       return (
-                        <div key={sub.id} className="flex items-center gap-3 p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl group transition-all hover:bg-white shadow-sm border-transparent hover:border-[var(--color-border)]">
+                        <div key={sub.id} className="flex items-center gap-2.5 md:gap-3 p-2.5 md:p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl group transition-all hover:bg-white shadow-sm border-transparent hover:border-[var(--color-border)]">
                           <button 
                             onClick={() => {
                               const updated = (task.subtasks || []).map(s => s && s.id === sub.id ? { ...s, completed: !s.completed } : s);
@@ -2506,7 +2502,7 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                             }}
                             className={`flex-shrink-0 transition-colors ${sub.completed ? 'text-emerald-500' : 'text-gray-300 hover:text-gray-400'}`}
                           >
-                            {sub.completed ? <CheckCircle2 className="w-6 h-6" /> : <div className="w-6 h-6 rounded-full border-2 border-current" />}
+                            {sub.completed ? <CheckCircle2 className="w-5 h-5 md:w-6 md:h-6" /> : <div className="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-current" />}
                           </button>
                           <input 
                             type="text"
@@ -2528,13 +2524,13 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                                 });
                               }
                             }}
-                            className={`flex-1 bg-transparent border-none outline-none text-base transition-all ${sub.completed ? 'text-gray-400 line-through' : 'text-[var(--color-text-main)]'}`}
+                            className={`flex-1 bg-transparent border-none outline-none text-sm md:text-base transition-all ${sub.completed ? 'text-gray-400 line-through' : 'text-[var(--color-text-main)]'}`}
                           />
                           <button 
                             onClick={() => {
                               onUpdate({ subtasks: (task.subtasks || []).filter(s => s && s.id !== sub.id) });
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 text-red-500 rounded-lg transition-all"
+                            className="opacity-0 group-hover:opacity-100 p-1.5 md:p-2 hover:bg-red-50 text-red-500 rounded-lg transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -2549,9 +2545,9 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                           subtasks: [...(Array.isArray(task.subtasks) ? task.subtasks : []), { id: newId, title: '', completed: false }] 
                         });
                       }}
-                      className="w-full p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40 group"
+                      className="w-full p-3 md:p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-xs md:text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40 group"
                     >
-                      <Plus className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                      <Plus className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
                       Taak toevoegen aan lijst
                     </button>
                   </div>
@@ -2560,26 +2556,26 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
             </div>
 
             {/* Row 2: Attachments & Meta Info */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-10 border-t border-[var(--color-border)]">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-10 pt-6 md:pt-8 border-t border-[var(--color-border)]">
               <div>
                 {/* Attachments */}
                 <section>
-                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">
+                  <label className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2.5">
                     <Paperclip className="w-3.5 h-3.5" />
                     Bijlagen
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 md:gap-3">
                     {(task.attachments || []).map((att) => (
-                      <div key={att.id} className="flex items-center justify-between p-4 bg-gray-50 border border-[var(--color-border)] rounded-xl group transition-all hover:bg-white shadow-sm border-transparent hover:border-[var(--color-border)]">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                          <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-[var(--color-text-sub)]">
-                            <Paperclip className="w-4 h-4" />
+                      <div key={att.id} className="flex items-center justify-between p-3 md:p-4 bg-gray-50 border border-[var(--color-border)] rounded-xl group transition-all hover:bg-white shadow-sm border-transparent hover:border-[var(--color-border)]">
+                        <div className="flex items-center gap-2.5 md:gap-3 overflow-hidden">
+                          <div className="w-7 h-7 md:w-8 md:h-8 bg-gray-100 rounded-lg flex items-center justify-center text-[var(--color-text-sub)]">
+                            <Paperclip className="w-3.5 h-3.5 md:w-4 md:h-4" />
                           </div>
-                          <span className="text-sm font-medium text-[var(--color-text-main)] truncate">{att.name}</span>
+                          <span className="text-xs md:text-sm font-medium text-[var(--color-text-main)] truncate">{att.name}</span>
                         </div>
                         <button 
                           onClick={(e) => { e.stopPropagation(); onUpdate({ attachments: (task.attachments || []).filter(a => a.id !== att.id) }); }}
-                          className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 text-red-500 rounded-lg transition-all"
+                          className="opacity-0 group-hover:opacity-100 p-1.5 md:p-2 hover:bg-red-50 text-red-500 rounded-lg transition-all"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -2594,9 +2590,9 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                           });
                         }
                       }}
-                      className="p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40"
+                      className="p-3 md:p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-xs md:text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40"
                     >
-                      <Plus className="w-5 h-5" />
+                      <Plus className="w-4 h-4 md:w-5 md:h-5" />
                       Bijlage
                     </button>
                   </div>
@@ -2606,25 +2602,25 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
               <div className="space-y-6">
                 {/* Meta Info */}
                 <section>
-                  <label className="flex items-center gap-2 text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-4">
+                  <label className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3 md:mb-4">
                     <Settings2 className="w-3.5 h-3.5" />
                     Eigenschappen
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-gray-50/50 p-4 rounded-2xl border border-[var(--color-border)]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 bg-gray-50/50 p-3 md:p-4 rounded-2xl border border-[var(--color-border)]">
                     <div>
-                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2 ml-1">Status</span>
-                      <div className="flex items-center h-[42px] px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
+                      <span className="block text-[9px] md:text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-1.5 md:mb-2 ml-1">Status</span>
+                      <div className="flex items-center h-9 md:h-[42px] px-2.5 md:px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
                         <StatusMenu current={task.status} onSelect={(s) => onUpdate({ status: s })} position="top" />
                       </div>
                     </div>
                     <div>
-                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2 ml-1">Prioriteit</span>
-                      <div className="flex items-center h-[42px] px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
+                      <span className="block text-[9px] md:text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-1.5 md:mb-2 ml-1">Prioriteit</span>
+                      <div className="flex items-center h-9 md:h-[42px] px-2.5 md:px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
                         <PriorityMenu current={task.priority} onSelect={(p) => onUpdate({ priority: p })} position="top" />
                       </div>
                     </div>
                     <div>
-                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2 ml-1">Vervaldatum</span>
+                      <span className="block text-[9px] md:text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-1.5 md:mb-2 ml-1">Vervaldatum</span>
                       <div 
                         onClick={(e) => {
                           const input = e.currentTarget.querySelector('input');
@@ -2634,25 +2630,16 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                             input.focus();
                           }
                         }}
-                        className="relative flex items-center h-[42px] px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm group focus-within:border-[var(--color-accent)] focus-within:ring-2 focus-within:ring-orange-100 transition-all cursor-pointer"
+                        className="relative flex items-center h-9 md:h-[42px] px-2.5 md:px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm group focus-within:border-[var(--color-accent)] focus-within:ring-2 focus-within:ring-orange-100 transition-all cursor-pointer"
                       >
-                        <Calendar className="w-4 h-4 text-[var(--color-text-sub)] mr-2 shrink-0" />
+                        <Calendar className="w-3.5 h-3.5 md:w-4 md:h-4 text-[var(--color-text-sub)] mr-1.5 md:mr-2 shrink-0" />
                         <input 
                           type="date"
                           value={task.dueDate || ''}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => onUpdate({ dueDate: e.target.value })}
-                          className="flex-1 bg-transparent border-none outline-none text-sm text-[var(--color-text-main)] cursor-pointer"
+                          className="flex-1 bg-transparent border-none outline-none text-xs md:text-sm text-[var(--color-text-main)] cursor-pointer"
                         />
-                      </div>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2 ml-1">Aanmaakdatum</span>
-                      <div className="flex items-center h-[42px] px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
-                        <Calendar className="w-4 h-4 text-[var(--color-text-sub)] mr-2 shrink-0" />
-                        <span className="text-sm text-[var(--color-text-main)]">
-                          {task.createdAt ? new Date(task.createdAt).toLocaleDateString() : '—'}
-                        </span>
                       </div>
                     </div>
                   </div>
