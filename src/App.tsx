@@ -161,6 +161,24 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Effect to handle tablet landscape mode - automatically collapse sidebar
+  useEffect(() => {
+    const checkTabletLandscape = () => {
+      const isLandscape = window.matchMedia("(orientation: landscape)").matches;
+      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isTabletWidth = window.innerWidth >= 768 && window.innerWidth <= 1366;
+
+      if (isTouchDevice && isTabletWidth && isLandscape) {
+        setIsSidebarCollapsed(true);
+      }
+    };
+
+    checkTabletLandscape();
+    window.addEventListener('resize', checkTabletLandscape);
+    return () => window.removeEventListener('resize', checkTabletLandscape);
+  }, []);
+
   const [zoomLevel, setZoomLevel] = useState(100);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(window.innerWidth < 1280);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -723,7 +741,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[60] xl:hidden"
+            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[60] lg:hidden"
           />
         )}
       </AnimatePresence>
@@ -733,11 +751,13 @@ export default function App() {
         style={{ 
           width: (isSidebarCollapsed && !isMobileSidebarOpen) 
             ? 72 
-            : (window.innerWidth >= 1280 ? sidebarWidth : 280) 
+            : (window.innerWidth >= 1024 ? sidebarWidth : 280) 
         }}
         className={`
-          fixed inset-y-0 left-0 z-[70] bg-[var(--color-sidebar)] border-r border-[#38342f] flex flex-col xl:relative xl:translate-x-0 
-          ${isResizing ? '' : 'transition-all duration-300'}
+          fixed inset-y-0 left-0 z-[70] bg-[var(--color-sidebar)] border-r border-[#38342f] flex flex-col 
+          lg:relative lg:translate-x-0 transition-transform duration-300
+          ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isResizing ? '' : 'transition-[width]'}
           ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'p-4 items-center' : 'p-6 lg:pt-6'}
         `}
       >
@@ -753,7 +773,7 @@ export default function App() {
           {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
             <button 
               onClick={() => setIsMobileSidebarOpen(false)}
-              className="xl:hidden p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)]"
+              className="lg:hidden p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)]"
             >
               <X className="w-6 h-6" />
             </button>
@@ -913,7 +933,7 @@ export default function App() {
             <div className={`flex items-center ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex-col gap-2' : 'gap-1'}`}>
               <button 
                 onClick={() => {
-                  if (window.innerWidth < 1280) {
+                  if (window.innerWidth < 1024) {
                     setIsMobileSidebarOpen(!isMobileSidebarOpen);
                   } else {
                     setIsSidebarCollapsed(!isSidebarCollapsed);
@@ -949,6 +969,7 @@ export default function App() {
             onClose={() => setIsEditingProfile(false)} 
             onUpdate={setCurrentUser}
             onLogout={handleLogout}
+            showNotification={showNotification}
           />
         )}
         {isAddingSpace && (
@@ -1062,11 +1083,11 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className={`flex-1 flex flex-col bg-[var(--color-bg)] overflow-hidden w-full transition-all duration-300 pl-[72px] xl:pl-0`}>
+      <main className={`flex-1 flex flex-col bg-[var(--color-bg)] overflow-hidden w-full transition-all duration-300 pl-0`}>
         {/* Header */}
-        <header className="bg-white border-b border-[var(--color-border)] px-4 lg:px-8 py-2 lg:h-[64px] flex flex-col xl:flex-row xl:items-center justify-between gap-3 lg:gap-8">
+        <header className="bg-white border-b border-[var(--color-border)] px-4 lg:px-8 py-2 lg:h-[64px] flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-8">
           {/* Mobile Header Top Row */}
-          <div className="flex items-center justify-between w-full xl:hidden">
+          <div className="flex items-center justify-between w-full lg:hidden">
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setIsMobileSidebarOpen(true)}
@@ -1080,7 +1101,7 @@ export default function App() {
             </div>
             
             {/* Mobile Plus Button (Add Category) */}
-            <div className="relative xl:hidden">
+            <div className="relative lg:hidden">
               <button 
                 onClick={() => setIsAddingColumn(true)}
                 className="p-2 text-[var(--color-accent)] hover:bg-orange-50 rounded-lg transition-all"
@@ -1095,7 +1116,7 @@ export default function App() {
           <div className="flex items-center gap-3 lg:gap-6 flex-1 min-w-0">
             <div className="flex items-center gap-2">
               {/* View Switcher (Hidden on tablets & smaller) */}
-              <div className="hidden xl:flex bg-gray-50 p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
+              <div className="hidden lg:flex bg-gray-50 p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
                 <button 
                   onClick={() => setView('board')}
                   className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
@@ -1115,7 +1136,7 @@ export default function App() {
               </div>
 
               {/* Nieuwe categorie button (Hidden on tablets & smaller) */}
-              <div className="relative hidden xl:block">
+              <div className="relative hidden lg:block">
                 <button 
                   onClick={() => setIsAddingColumn(true)}
                   className="p-1.5 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all border border-transparent hover:border-[var(--color-border)]"

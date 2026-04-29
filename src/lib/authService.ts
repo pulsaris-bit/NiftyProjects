@@ -55,12 +55,39 @@ export const authService = {
   },
 
   async updateProfile(updates: Partial<User>): Promise<User> {
-    // This would require a specific API route for updating users
-    // For now we simulate or use the existing update logic if added to server
-    const user = this.getSession();
-    if (!user) throw new Error('Niet ingelogd');
+    const token = this.getToken();
+    if (!token) throw new Error('Niet geautoriseerd');
+
+    const res = await fetch(`${API_BASE}/auth/profile`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(updates)
+    });
     
-    // In a real app we'd call PUT /api/users/me
-    return { ...user, ...updates }; 
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    localStorage.setItem(USER_KEY, JSON.stringify(data));
+    return data;
+  },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const token = this.getToken();
+    if (!token) throw new Error('Niet geautoriseerd');
+
+    const res = await fetch(`${API_BASE}/auth/change-password`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
   }
 };

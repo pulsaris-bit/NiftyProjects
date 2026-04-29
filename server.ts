@@ -218,6 +218,36 @@ app.get('/api/auth/me', authenticateToken, (req: any, res) => {
   res.json(user);
 });
 
+app.put('/api/auth/profile', authenticateToken, async (req: any, res) => {
+  const { name, avatar } = req.body;
+  if (!name) return res.status(400).json({ error: 'Naam is verplicht' });
+
+  try {
+    db.prepare('UPDATE users SET name = ?, avatar = ? WHERE id = ?').run(name, avatar || '', req.user.id);
+    const updatedUser: any = db.prepare('SELECT id, name, email, avatar FROM users WHERE id = ?').get(req.user.id);
+    res.json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ error: 'Kon profiel niet bijwerken' });
+  }
+});
+
+app.post('/api/auth/change-password', authenticateToken, async (req: any, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Huidig en nieuw wachtwoord zijn verplicht' });
+
+  try {
+    const user: any = db.prepare('SELECT password FROM users WHERE id = ?').get(req.user.id);
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) return res.status(400).json({ error: 'Huidig wachtwoord is onjuist' });
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashedNewPassword, req.user.id);
+    res.json({ success: true, message: 'Wachtwoord succesvol gewijzigd' });
+  } catch (error) {
+    res.status(500).json({ error: 'Kon wachtwoord niet wijzigen' });
+  }
+});
+
 app.get('/api/users/search', authenticateToken, (req: any, res) => {
   const query = req.query.q as string;
   if (!query || query.length < 2) return res.json([]);
