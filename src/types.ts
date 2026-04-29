@@ -27,6 +27,8 @@ export interface Task {
   spaceId: string;
   dueDate?: string;
   createdAt: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
   attachments?: Attachment[];
   link?: string;
   subtasks?: SubTask[];

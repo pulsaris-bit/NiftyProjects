@@ -37,7 +37,12 @@ import {
   Link as LinkIcon,
   FileText,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  Share2,
+  Users,
+  Shield,
+  Loader2,
+  Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -117,8 +122,47 @@ export default function App() {
   const [activeSpaceId, setActiveSpaceId] = useState<string>('space-1');
   const [view, setView] = useState<'board' | 'list'>('board');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Handle automatic view switching on mobile based on orientation
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      const isMobile = window.innerWidth < 768;
+      if (isMobile) {
+        if (window.innerWidth > window.innerHeight) {
+          setView('list');
+        } else {
+          setView('board');
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleOrientationChange);
+    handleOrientationChange();
+    return () => window.removeEventListener('resize', handleOrientationChange);
+  }, []);
+
+  // Keyboard shortcuts for zooming (Ctrl + / Ctrl -)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+' || e.key === '-')) {
+        e.preventDefault();
+        if (e.key === '=' || e.key === '+') {
+          setZoomLevel(prev => Math.min(prev + 10, 150));
+        } else if (e.key === '-') {
+          setZoomLevel(prev => Math.max(prev - 10, 50));
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        setZoomLevel(100);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   const [zoomLevel, setZoomLevel] = useState(100);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(window.innerWidth < 1280);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem('niftyprojects_sidebar_width');
     return saved ? parseInt(saved, 10) : 280;
@@ -138,8 +182,41 @@ export default function App() {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
 
+  const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  
+  // Swipe detection for sidebar
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+    
+    if (isRightSwipe && touchStart < 100) {
+      setIsMobileSidebarOpen(true);
+    } else if (isLeftSwipe && isMobileSidebarOpen) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
+
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [sharingItem, setSharingItem] = useState<{ type: 'task' | 'space', id: string, title: string } | null>(null);
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId), [tasks, selectedTaskId]);
 
   // Load initial data from API
@@ -210,7 +287,8 @@ export default function App() {
     const specialNames: Record<string, string> = {
       'overview': 'Overzicht',
       'my-tasks': 'Mijn Taken',
-      'inbox': 'Inbox'
+      'inbox': 'Inbox',
+      'trash': 'Prullenbak'
     };
     
     return {
@@ -229,27 +307,41 @@ export default function App() {
       t.title.toLowerCase().includes(query) || 
       t.description.toLowerCase().includes(query);
 
-    if (activeSpaceId === 'inbox') {
-      return tasks.filter(t => baseFilter(t) && t.status === 'Te doen');
-    }
-    if (activeSpaceId === 'my-tasks' || activeSpaceId === 'overview') {
-      return tasks.filter(t => baseFilter(t));
+    if (activeSpaceId === 'trash') {
+      return tasks.filter(t => t.isDeleted && baseFilter(t))
+        .sort((a, b) => new Date(b.deletedAt || 0).getTime() - new Date(a.deletedAt || 0).getTime());
     }
 
-    return tasks.filter(t => t.spaceId === activeSpaceId && baseFilter(t));
+    if (activeSpaceId === 'inbox') {
+      return tasks.filter(t => !t.isDeleted && baseFilter(t) && t.status === 'Te doen');
+    }
+    if (activeSpaceId === 'my-tasks' || activeSpaceId === 'overview') {
+      return tasks.filter(t => !t.isDeleted && baseFilter(t));
+    }
+
+    return tasks.filter(t => !t.isDeleted && t.spaceId === activeSpaceId && baseFilter(t));
   }, [tasks, activeSpaceId, searchQuery]);
 
   const addTask = React.useCallback(async () => {
     if (!newTaskTitle.trim()) return;
     
     // Determine the space ID: if in a special view, default to the first real space
-    const targetSpaceId = ['overview', 'my-tasks', 'inbox'].includes(activeSpaceId) 
-      ? (spaces[0]?.id || 'space-1') 
+    const targetSpaceId = ['overview', 'my-tasks', 'inbox', 'trash'].includes(activeSpaceId) 
+      ? spaces[0]?.id 
       : activeSpaceId;
+    
+    if (!targetSpaceId) {
+      showNotification('Maak eerst een ruimte aan voordat je een taak toevoegt', 'error');
+      return;
+    }
     
     // Find the target space to get its first column
     const targetSpace = spaces.find(s => s.id === targetSpaceId);
-    const firstColumn = targetSpace?.columns?.[0] || DEFAULT_COLUMNS[0];
+    if (!targetSpace) {
+      showNotification('Geselecteerde ruimte niet gevonden', 'error');
+      return;
+    }
+    const firstColumn = targetSpace.columns?.[0] || DEFAULT_COLUMNS[0];
 
     const newTask: Task = {
       id: `task-${Date.now()}`,
@@ -263,57 +355,74 @@ export default function App() {
 
     try {
       const token = authService.getToken();
-      await fetch('/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(newTask)
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon taak niet toevoegen');
+      }
       setTasks(prev => [newTask, ...prev]);
       setNewTaskTitle('');
-    } catch (error) {
-      console.error('Fout bij opslaan taak:', error);
+      showNotification('Taak toegevoegd');
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, [newTaskTitle, activeSpaceId, spaces]);
 
   const updateTaskStatus = React.useCallback(async (taskId: string, newStatus: Status) => {
     try {
       const token = authService.getToken();
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus })
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon status niet bijwerken');
+      }
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
-    } catch (error) {
-      console.error('Fout bij bijwerken status:', error);
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, []);
 
   const updateTaskPriority = React.useCallback(async (taskId: string, newPriority: Priority) => {
     try {
       const token = authService.getToken();
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ priority: newPriority })
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon prioriteit niet bijwerken');
+      }
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, priority: newPriority } : t));
-    } catch (error) {
-      console.error('Fout bij bijwerken prioriteit:', error);
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, []);
 
   const updateTaskDetails = React.useCallback(async (taskId: string, updates: Partial<Task>) => {
     try {
       const token = authService.getToken();
-      await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(updates)
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon taak niet bijwerken');
+      }
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
-    } catch (error) {
-      console.error('Fout bij bijwerken details:', error);
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, []);
 
@@ -330,50 +439,65 @@ export default function App() {
 
     try {
       const token = authService.getToken();
-      await fetch('/api/spaces', {
+      const res = await fetch('/api/spaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(newSpace)
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon ruimte niet toevoegen');
+      }
       setSpaces(prev => [...prev, newSpace]);
       setActiveSpaceId(newSpace.id);
-    } catch (error) {
-      console.error('Fout bij toevoegen space:', error);
+      showNotification('Ruimte aangemaakt');
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, []);
 
   const updateSpace = React.useCallback(async (id: string, name: string, emoji: string) => {
     try {
       const token = authService.getToken();
-      await fetch(`/api/spaces/${id}`, {
+      const res = await fetch(`/api/spaces/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ name, emoji })
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon ruimte niet bijwerken');
+      }
       setSpaces(prev => prev.map(s => s.id === id ? { ...s, name, emoji } : s));
-    } catch (error) {
-      console.error('Fout bij bijwerken space:', error);
+      showNotification('Ruimte bijgewerkt');
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, []);
 
   const deleteSpace = React.useCallback(async (id: string) => {
     if (spaces.length <= 1) {
-      alert('Je moet minimaal één ruimte overhouden.');
+      showNotification('Je moet minimaal één ruimte overhouden', 'error');
       return;
     }
     if (window.confirm('Weet je zeker dat je deze ruimte en alle bijbehorende taken wilt verwijderen?')) {
       try {
         const token = authService.getToken();
-        await fetch(`/api/spaces/${id}`, {
+        const res = await fetch(`/api/spaces/${id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Kon ruimte niet verwijderen');
+        }
         setSpaces(prev => prev.filter(s => s.id !== id));
         if (activeSpaceId === id) {
           setActiveSpaceId(spaces.find(s => s.id !== id)?.id || '');
         }
-      } catch (error) {
-        console.error('Fout bij verwijderen space:', error);
+        showNotification('Ruimte verwijderd');
+      } catch (error: any) {
+        showNotification(error.message, 'error');
       }
     }
   }, [spaces, activeSpaceId]);
@@ -400,16 +524,21 @@ export default function App() {
     
     try {
       const token = authService.getToken();
-      await fetch(`/api/spaces/${activeSpaceId}`, {
+      const res = await fetch(`/api/spaces/${activeSpaceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ columns: updatedColumns })
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon kolom niet toevoegen');
+      }
       setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
       setNewColumnName('');
       setIsAddingColumn(false);
-    } catch (error) {
-      console.error('Fout bij toevoegen kolom:', error);
+      showNotification('Kolom toegevoegd');
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, [activeSpaceId, spaces]);
 
@@ -417,23 +546,30 @@ export default function App() {
     const currentActiveSpace = spaces.find(s => s.id === activeSpaceId);
     if (!currentActiveSpace) return;
     
+    if (!window.confirm(`Weet je zeker dat je de kolom "${columnName}" wilt verwijderen? Alle taken in deze kolom worden naar de eerste kolom verplaatst.`)) return;
+
     const updatedColumns = (currentActiveSpace.columns || DEFAULT_COLUMNS).filter(c => c !== columnName);
     
     try {
       const token = authService.getToken();
-      await fetch(`/api/spaces/${activeSpaceId}`, {
+      const res = await fetch(`/api/spaces/${activeSpaceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ columns: updatedColumns })
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon kolom niet verwijderen');
+      }
       
       setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
       setTasks(prev => {
         const fallbackStatus = updatedColumns[0] || 'Te doen';
         return prev.map(t => t.status === columnName && t.spaceId === activeSpaceId ? { ...t, status: fallbackStatus } : t);
       });
-    } catch (error) {
-      console.error('Fout bij verwijderen kolom:', error);
+      showNotification('Kolom verwijderd');
+    } catch (error: any) {
+      showNotification(error.message, 'error');
     }
   }, [activeSpaceId, spaces]);
 
@@ -474,26 +610,73 @@ export default function App() {
   }, [activeSpaceId]);
 
   const deleteTask = React.useCallback(async (taskId: string) => {
-    console.log('deleteTask aangeroepen voor ID:', taskId);
     try {
       const token = authService.getToken();
-      console.log('Token opgehaald, DELETE request sturen...');
+      const updates = { isDeleted: true, deletedAt: new Date().toISOString() };
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(updates)
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon taak niet naar prullenbak verplaatsen');
+      }
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+      showNotification('Taak naar prullenbak verplaatst');
+    } catch (error: any) {
+      showNotification(error.message, 'error');
+    }
+  }, []);
+
+  const restoreTask = React.useCallback(async (taskId: string) => {
+    try {
+      const token = authService.getToken();
+      const updates = { isDeleted: false, deletedAt: null };
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(updates)
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Kon taak niet herstellen');
+      }
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+      showNotification('Taak hersteld');
+    } catch (error: any) {
+      showNotification(error.message, 'error');
+    }
+  }, []);
+
+  const permanentlyDeleteTask = React.useCallback(async (taskId: string) => {
+    console.log(`[permanentlyDeleteTask] Aanroep voor ID: ${taskId}`);
+    
+    try {
+      const token = authService.getToken();
+      console.log(`[permanentlyDeleteTask] API verzoek sturen naar DELETE /api/tasks/${taskId}`);
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
+      console.log(`[permanentlyDeleteTask] Server response status: ${response.status}`);
+      
       if (response.ok) {
-        console.log('Taak succesvol verwijderd van server');
         setTasks(prev => prev.filter(t => t.id !== taskId));
+        if (selectedTaskId === taskId) setSelectedTaskId(null);
+        showNotification('Taak definitief verwijderd');
+        console.log(`[permanentlyDeleteTask] Taak succesvol verwijderd uit UI`);
       } else {
-        const errorText = await response.text();
-        console.error('Verwijderen mislukt op server:', response.status, errorText);
+        const data = await response.json();
+        console.error(`[permanentlyDeleteTask] API Fout:`, data);
+        throw new Error(data.error || 'Kon taak niet verwijderen');
       }
-    } catch (error) {
-      console.error('Fout bij verwijderen taak:', error);
+    } catch (error: any) {
+      console.error(`[permanentlyDeleteTask] Exception:`, error);
+      showNotification(error.message, 'error');
     }
-  }, []);
+  }, [selectedTaskId]);
 
   const renameTask = React.useCallback(async (taskId: string, newTitle: string) => {
     if (!newTitle.trim()) return;
@@ -526,8 +709,13 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-[var(--color-surface-bg)] overflow-hidden relative">
-      {/* Sidebar Overlay for Mobile */}
+    <div 
+      className="flex h-screen w-full bg-[var(--color-surface-bg)] overflow-hidden relative"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Sidebar Overlay (Only when expanded on tablets/mobile) */}
       <AnimatePresence>
         {isMobileSidebarOpen && (
           <motion.div 
@@ -535,7 +723,7 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] lg:hidden"
+            className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[60] xl:hidden"
           />
         )}
       </AnimatePresence>
@@ -543,30 +731,29 @@ export default function App() {
       {/* Sidebar */}
       <aside 
         style={{ 
-          width: isSidebarCollapsed 
-            ? (window.innerWidth >= 1024 ? 72 : 280) 
-            : (window.innerWidth >= 1024 ? sidebarWidth : 280) 
+          width: (isSidebarCollapsed && !isMobileSidebarOpen) 
+            ? 72 
+            : (window.innerWidth >= 1280 ? sidebarWidth : 280) 
         }}
         className={`
-          fixed inset-y-0 left-0 z-[70] bg-[var(--color-sidebar)] border-r border-[#38342f] flex flex-col lg:relative lg:translate-x-0 
+          fixed inset-y-0 left-0 z-[70] bg-[var(--color-sidebar)] border-r border-[#38342f] flex flex-col xl:relative xl:translate-x-0 
           ${isResizing ? '' : 'transition-all duration-300'}
-          ${isSidebarCollapsed ? 'p-4 lg:pt-6 items-center' : 'p-6 lg:pt-6'}
-          ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'p-4 items-center' : 'p-6 lg:pt-6'}
         `}
       >
-        <div className={`flex items-center justify-between mb-10 shrink-0 w-full ${isSidebarCollapsed ? 'flex-col gap-4' : ''}`}>
+        <div className={`flex items-center justify-between mb-10 shrink-0 w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex-col gap-4' : ''}`}>
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="bg-[var(--color-accent)] p-2 rounded-xl shadow-lg shadow-orange-900/20 rotate-[5deg] shrink-0">
               <CheckCircle2 className="w-6 h-6 text-white" />
             </div>
-            {!isSidebarCollapsed && (
+            {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
               <h1 className="text-xl font-bold text-[var(--color-sidebar-text)] tracking-tight truncate font-sans">NiftyProjects</h1>
             )}
           </div>
-          {!isSidebarCollapsed && (
+          {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
             <button 
               onClick={() => setIsMobileSidebarOpen(false)}
-              className="lg:hidden p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)]"
+              className="xl:hidden p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)]"
             >
               <X className="w-6 h-6" />
             </button>
@@ -574,7 +761,7 @@ export default function App() {
         </div>
 
         {/* Search Field */}
-        {!isSidebarCollapsed && (
+        {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
           <div className="mb-6 relative group">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-sidebar-text-muted)]" />
             <input 
@@ -587,10 +774,10 @@ export default function App() {
           </div>
         )}
 
-        <nav className={`flex-1 space-y-8 overflow-y-auto custom-scrollbar-sidebar pb-4 w-full ${isSidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
+        <nav className={`flex-1 space-y-8 overflow-y-auto custom-scrollbar-sidebar pb-4 w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
           <div className="space-y-4 w-full">
-            {!isSidebarCollapsed && <p className="text-[11px] font-bold text-[var(--color-sidebar-text-muted)] uppercase tracking-wider px-0">Menu</p>}
-            <div className={`space-y-1 w-full ${isSidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
+            {!(isSidebarCollapsed && !isMobileSidebarOpen) && <p className="text-[11px] font-bold text-[var(--color-sidebar-text-muted)] uppercase tracking-wider px-0">Menu</p>}
+            <div className={`space-y-1 w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
               {[
                 { label: 'Overzicht', key: 'overview', icon: Layout },
                 { label: 'Mijn Taken', key: 'my-tasks', icon: ListTodo },
@@ -600,26 +787,26 @@ export default function App() {
                   key={item.key}
                   onClick={() => {
                     setActiveSpaceId(item.key);
-                    if (window.innerWidth < 1024) setIsMobileSidebarOpen(false);
+                    if (window.innerWidth < 1280) setIsMobileSidebarOpen(false);
                   }}
                   className={`flex items-center rounded-xl transition-all cursor-pointer ${
-                    isSidebarCollapsed ? 'justify-center w-10 h-10' : 'w-full gap-3 py-2 px-3 text-sm'
+                    (isSidebarCollapsed && !isMobileSidebarOpen) ? 'justify-center w-10 h-10' : 'w-full gap-3 py-2 px-3 text-sm'
                   } ${
                     activeSpaceId === item.key 
                       ? 'text-white font-semibold bg-[var(--color-accent)] shadow-lg shadow-orange-900/20' 
                       : 'text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5'
                   }`}
-                  title={isSidebarCollapsed ? item.label : ''}
+                  title={(isSidebarCollapsed && !isMobileSidebarOpen) ? item.label : ''}
                 >
                   <item.icon className="w-[18px] h-[18px]" />
-                  {!isSidebarCollapsed && item.label}
+                  {!(isSidebarCollapsed && !isMobileSidebarOpen) && item.label}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="space-y-4 w-full">
-            {!isSidebarCollapsed && (
+            {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-bold text-[var(--color-sidebar-text-muted)] uppercase tracking-wider px-0">Ruimtes</p>
                 <button 
@@ -630,38 +817,50 @@ export default function App() {
                 </button>
               </div>
             )}
-            <div className={`space-y-1 overflow-y-auto max-h-[40vh] custom-scrollbar w-full ${isSidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
+            <div className={`space-y-1 overflow-y-auto max-h-[40vh] custom-scrollbar w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
               {spaces.map(space => (
                 <div 
                   key={space.id} 
                   onClick={() => {
                     setActiveSpaceId(space.id);
-                    if (window.innerWidth < 1024) setIsMobileSidebarOpen(false);
+                    if (window.innerWidth < 1280) setIsMobileSidebarOpen(false);
                   }}
                   className={`group relative flex items-center rounded-xl transition-all cursor-pointer ${
-                    isSidebarCollapsed ? 'justify-center w-10 h-10' : 'w-full gap-3 py-2 px-3 text-sm'
+                    (isSidebarCollapsed && !isMobileSidebarOpen) ? 'justify-center w-10 h-10' : 'w-full gap-3 py-2 px-3 text-sm'
                   } ${
                     activeSpaceId === space.id 
                       ? 'text-[var(--color-sidebar-text)] font-semibold bg-white/10 shadow-sm' 
                       : 'text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5'
                   }`}
-                  title={isSidebarCollapsed ? space.name : ''}
+                  title={(isSidebarCollapsed && !isMobileSidebarOpen) ? space.name : ''}
                 >
-                  <div className={`${isSidebarCollapsed ? '' : 'w-5'} flex items-center justify-center text-base`}>
+                  <div className={`${(isSidebarCollapsed && !isMobileSidebarOpen) ? '' : 'w-5'} flex items-center justify-center text-base`}>
                     {space.emoji || '📁'}
                   </div>
-                  {!isSidebarCollapsed && <span className="truncate flex-1 text-left">{space.name}</span>}
+                  {!(isSidebarCollapsed && !isMobileSidebarOpen) && <span className="truncate flex-1 text-left">{space.name}</span>}
                   
-                  {!isSidebarCollapsed && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleOpenSpaceModal(space);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded transition-all outline-none"
-                    >
-                      <Settings className="w-3 h-3 text-[var(--color-sidebar-text)]" />
-                    </button>
+                  {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSharingItem({ type: 'space', id: space.id, title: space.name });
+                        }}
+                        className="p-1 hover:bg-white/10 rounded transition-all outline-none text-indigo-400"
+                        title="Ruimte delen"
+                      >
+                        <Share2 className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenSpaceModal(space);
+                        }}
+                        className="p-1 hover:bg-white/10 rounded transition-all outline-none"
+                      >
+                        <Settings className="w-3 h-3 text-[var(--color-sidebar-text)]" />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -669,37 +868,63 @@ export default function App() {
           </div>
         </nav>
 
-        <div className={`mt-auto pt-4 border-t border-white/10 w-full flex ${isSidebarCollapsed ? 'flex-col items-center gap-4' : 'items-center justify-between'}`}>
-          <div 
-            onClick={() => setIsEditingProfile(true)}
-            className={`flex items-center gap-3 cursor-pointer group/profile ${isSidebarCollapsed ? 'flex-col' : 'flex-1 min-w-0'}`}
+        <div className={`mt-auto pt-4 border-t border-white/10 w-full flex flex-col gap-4`}>
+          <button
+            onClick={() => {
+              setActiveSpaceId('trash');
+              if (window.innerWidth < 1280) setIsMobileSidebarOpen(false);
+            }}
+            className={`flex items-center rounded-xl transition-all cursor-pointer ${
+              (isSidebarCollapsed && !isMobileSidebarOpen) ? 'justify-center w-10 h-10' : 'w-full gap-3 py-2 px-3 text-sm'
+            } ${
+              activeSpaceId === 'trash' 
+                ? 'text-white font-semibold bg-white/20' 
+                : 'text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5'
+            }`}
+            title={(isSidebarCollapsed && !isMobileSidebarOpen) ? 'Prullenbak' : ''}
           >
-            {currentUser?.avatar ? (
-              <img 
-                src={currentUser.avatar} 
-                className="w-8 h-8 rounded-full border-2 border-white/20 shadow-sm group-hover/profile:border-[var(--color-accent)] transition-all"
-                alt={currentUser.name}
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-400 to-rose-400 border-2 border-white/20 flex items-center justify-center text-[10px] font-bold text-white shadow-sm transition-all group-hover/profile:border-[var(--color-accent)]">
-                {currentUser?.name?.substring(0, 2).toUpperCase() || '??'}
-              </div>
-            )}
-            {!isSidebarCollapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="text-[12px] font-bold text-[var(--color-sidebar-text)] truncate group-hover/profile:text-[var(--color-accent)] transition-colors">{currentUser?.name}</span>
-                <span className="text-[10px] text-[var(--color-sidebar-text-muted)] truncate">{currentUser?.email}</span>
-              </div>
-            )}
-          </div>
-          <div className={`flex items-center ${isSidebarCollapsed ? 'flex-col gap-2' : 'gap-1'}`}>
-            <button 
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5 rounded-lg transition-all"
-              title={isSidebarCollapsed ? "Toon sidebar" : "Verberg sidebar"}
+            <Trash2 className="w-[18px] h-[18px]" />
+            {!(isSidebarCollapsed && !isMobileSidebarOpen) && 'Prullenbak'}
+          </button>
+
+          <div className={`flex ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex-col items-center gap-4' : 'items-center justify-between'}`}>
+            <div 
+              onClick={() => setIsEditingProfile(true)}
+              className={`flex items-center gap-3 cursor-pointer group/profile ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex-col' : 'flex-1 min-w-0'}`}
             >
-              {isSidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
-            </button>
+              {currentUser?.avatar ? (
+                <img 
+                  src={currentUser.avatar} 
+                  className="w-8 h-8 rounded-full border-2 border-white/20 shadow-sm group-hover/profile:border-[var(--color-accent)] transition-all"
+                  alt={currentUser.name}
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-400 to-rose-400 border-2 border-white/20 flex items-center justify-center text-[10px] font-bold text-white shadow-sm transition-all group-hover/profile:border-[var(--color-accent)]">
+                  {currentUser?.name?.substring(0, 2).toUpperCase() || '??'}
+                </div>
+              )}
+              {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[12px] font-bold text-[var(--color-sidebar-text)] truncate group-hover/profile:text-[var(--color-accent)] transition-colors">{currentUser?.name}</span>
+                  <span className="text-[10px] text-[var(--color-sidebar-text-muted)] truncate">{currentUser?.email}</span>
+                </div>
+              )}
+            </div>
+            <div className={`flex items-center ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex-col gap-2' : 'gap-1'}`}>
+              <button 
+                onClick={() => {
+                  if (window.innerWidth < 1280) {
+                    setIsMobileSidebarOpen(!isMobileSidebarOpen);
+                  } else {
+                    setIsSidebarCollapsed(!isSidebarCollapsed);
+                  }
+                }}
+                className="p-2 text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5 rounded-lg transition-all"
+                title={(isSidebarCollapsed && !isMobileSidebarOpen) ? "Toon sidebar" : "Verberg sidebar"}
+              >
+                {(isSidebarCollapsed && !isMobileSidebarOpen) ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -837,11 +1062,11 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col bg-[var(--color-bg)] overflow-hidden w-full">
+      <main className={`flex-1 flex flex-col bg-[var(--color-bg)] overflow-hidden w-full transition-all duration-300 pl-[72px] xl:pl-0`}>
         {/* Header */}
-        <header className="bg-white border-b border-[var(--color-border)] px-4 lg:px-8 py-2 lg:h-[64px] flex flex-col lg:flex-row lg:items-center justify-between gap-3 lg:gap-8">
+        <header className="bg-white border-b border-[var(--color-border)] px-4 lg:px-8 py-2 lg:h-[64px] flex flex-col xl:flex-row xl:items-center justify-between gap-3 lg:gap-8">
           {/* Mobile Header Top Row */}
-          <div className="flex items-center justify-between w-full lg:hidden">
+          <div className="flex items-center justify-between w-full xl:hidden">
             <div className="flex items-center gap-2">
               <button 
                 onClick={() => setIsMobileSidebarOpen(true)}
@@ -853,24 +1078,24 @@ export default function App() {
                 {activeSpace.name}
               </div>
             </div>
+            
+            {/* Mobile Plus Button (Add Category) */}
+            <div className="relative xl:hidden">
+              <button 
+                onClick={() => setIsAddingColumn(true)}
+                className="p-2 text-[var(--color-accent)] hover:bg-orange-50 rounded-lg transition-all"
+                title="Nieuwe categorie toevoegen"
+              >
+                <PlusCircle className="w-6 h-6" />
+              </button>
+            </div>
           </div>
 
           {/* Left Group: Breadcrumb + View Switcher + Add Column */}
           <div className="flex items-center gap-3 lg:gap-6 flex-1 min-w-0">
-            {/* Desktop Sidebar Expand Button (Shown when sidebar is fixed but collapsed elsewhere) */}
-            {isSidebarCollapsed && (
-              <button 
-                onClick={() => setIsSidebarCollapsed(false)}
-                className="hidden lg:flex p-2 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all"
-                title="Toon sidebar"
-              >
-                <PanelLeftOpen className="w-6 h-6" />
-              </button>
-            )}
-
             <div className="flex items-center gap-2">
-              {/* View Switcher */}
-              <div className="flex bg-gray-50 p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
+              {/* View Switcher (Hidden on tablets & smaller) */}
+              <div className="hidden xl:flex bg-gray-50 p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
                 <button 
                   onClick={() => setView('board')}
                   className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
@@ -889,8 +1114,8 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Nieuwe categorie button (Moved here) */}
-              <div className="relative">
+              {/* Nieuwe categorie button (Hidden on tablets & smaller) */}
+              <div className="relative hidden xl:block">
                 <button 
                   onClick={() => setIsAddingColumn(true)}
                   className="p-1.5 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all border border-transparent hover:border-[var(--color-border)]"
@@ -898,98 +1123,95 @@ export default function App() {
                 >
                   <PlusCircle className="w-5 h-5 sm:w-6 s-6" />
                 </button>
-                  
-                  <AnimatePresence>
-                    {isAddingColumn && (
-                      <motion.div 
-                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                        className="absolute left-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-[var(--color-border)] z-50 p-4"
+              </div>
+
+              {/* Global Add Category Popover */}
+              <AnimatePresence>
+                {isAddingColumn && (
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="absolute right-4 xl:right-auto xl:left-auto mt-20 xl:mt-12 w-72 bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] z-[200] p-6"
+                    style={{ position: 'absolute', top: '0', right: '16px' }}
+                  >
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-[var(--color-accent)]">
+                        <PlusCircle className="w-5 h-5" />
+                      </div>
+                      <h3 className="text-sm font-bold text-gray-900">Nieuwe categorie</h3>
+                    </div>
+                    
+                    <input 
+                      autoFocus
+                      type="text"
+                      placeholder="Bijv. 'Wachten' of 'Review'..."
+                      className="w-full bg-gray-50 border border-[var(--color-border)] rounded-xl px-4 py-3 text-sm mb-4 outline-none focus:border-[var(--color-accent)] focus:ring-4 focus:ring-orange-500/5 transition-all text-[var(--color-text-main)] font-medium"
+                      value={newColumnName}
+                      onChange={(e) => setNewColumnName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addColumn(newColumnName)}
+                    />
+                    
+                    <div className="flex gap-3">
+                      <button 
+                        onClick={() => setIsAddingColumn(false)}
+                        className="flex-1 px-4 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors"
                       >
-                        <p className="text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-3">Nieuwe categorie</p>
-                        <input 
-                          autoFocus
-                          type="text"
-                          placeholder="Naam bijv. 'Wachten'..."
-                          className="w-full bg-gray-50 border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:border-[var(--color-accent)]"
-                          value={newColumnName}
-                          onChange={(e) => setNewColumnName(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && addColumn(newColumnName)}
-                        />
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => setIsAddingColumn(false)}
-                            className="flex-1 px-3 py-1.5 text-xs font-semibold text-[var(--color-text-sub)] hover:bg-gray-50 rounded"
-                          >
-                            Annuleren
-                          </button>
-                          <button 
-                            onClick={() => addColumn(newColumnName)}
-                            className="flex-1 px-3 py-1.5 text-xs font-bold bg-[var(--color-accent)] text-white rounded"
-                          >
-                            Toevoegen
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                        Annuleren
+                      </button>
+                      <button 
+                        onClick={() => addColumn(newColumnName)}
+                        className="flex-1 px-4 py-2.5 text-xs font-bold bg-[var(--color-accent)] text-white rounded-xl shadow-lg shadow-orange-100 hover:opacity-90 transition-all hover:-translate-y-0.5"
+                      >
+                        Toevoegen
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-3 bg-[var(--color-bg)] rounded-lg border border-[var(--color-border)] px-3 py-1.5 mr-2">
-              <ZoomOut className="w-3.5 h-3.5 text-[var(--color-text-sub)]" />
-              <div className="flex flex-col gap-1">
-                <input 
-                  type="range"
-                  min="50"
-                  max="150"
-                  step="5"
-                  value={zoomLevel}
-                  onChange={(e) => setZoomLevel(parseInt(e.target.value))}
-                  className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[var(--color-accent)]"
-                />
-                <div className="flex justify-between text-[9px] font-bold text-[var(--color-text-sub)] uppercase tracking-tighter">
-                  <span>50%</span>
-                  <span>150%</span>
-                </div>
-              </div>
-              <ZoomIn className="w-3.5 h-3.5 text-[var(--color-text-sub)]" />
-              <span className="text-[11px] font-bold text-[var(--color-accent)] w-9 text-right ml-1">
-                {zoomLevel}%
-              </span>
-            </div>
           </div>
         </header>
 
         {/* View Content */}
         <div className="flex-1 overflow-auto p-4 lg:p-8 font-sans custom-scrollbar" style={{ zoom: zoomLevel / 100 }}>
-          <div className="mb-8 p-4 bg-white rounded-2xl shadow-sm border border-[var(--color-border)] flex items-center gap-4 transition-all focus-within:ring-4 focus-within:ring-orange-50 focus-within:border-[var(--color-accent)]">
-            <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-[var(--color-accent)] shrink-0">
-              <Plus className="w-5 h-5" />
+          {activeSpaceId !== 'trash' && (
+            <div className="mb-8 p-4 bg-white rounded-2xl shadow-sm border border-[var(--color-border)] flex items-center gap-4 transition-all focus-within:ring-4 focus-within:ring-orange-50 focus-within:border-[var(--color-accent)]">
+              <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-[var(--color-accent)] shrink-0">
+                <Plus className="w-5 h-5" />
+              </div>
+              <input 
+                type="text" 
+                placeholder="Snel een nieuwe taak toevoegen... (Druk op Enter)"
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                className="flex-1 text-sm border-none focus:ring-0 p-0 outline-none text-[var(--color-text-main)] font-medium placeholder:text-gray-400"
+              />
+              {newTaskTitle.trim() && (
+                <button 
+                  onClick={addTask}
+                  className="px-4 py-2 bg-[var(--color-accent)] text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-100 hover:opacity-90 transition-all shrink-0"
+                >
+                  Toevoegen
+                </button>
+              )}
             </div>
-            <input 
-              type="text" 
-              placeholder="Snel een nieuwe taak toevoegen... (Druk op Enter)"
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addTask()}
-              className="flex-1 text-sm border-none focus:ring-0 p-0 outline-none text-[var(--color-text-main)] font-medium placeholder:text-gray-400"
-            />
-            {newTaskTitle.trim() && (
-              <button 
-                onClick={addTask}
-                className="px-4 py-2 bg-[var(--color-accent)] text-white rounded-xl text-xs font-bold shadow-lg shadow-orange-100 hover:opacity-90 transition-all shrink-0"
-              >
-                Toevoegen
-              </button>
-            )}
-          </div>
+          )}
 
           <AnimatePresence mode="wait">
-            {view === 'board' ? (
+            {activeSpaceId === 'trash' ? (
+              <TrashView 
+                key="trash"
+                tasks={filteredTasks}
+                onRestore={restoreTask}
+                onPermanentDelete={permanentlyDeleteTask}
+                onOpenTaskDetails={setSelectedTaskId}
+              />
+            ) : view === 'board' ? (
               <BoardView 
                 key="board" 
                 tasks={filteredTasks}
@@ -1028,9 +1250,280 @@ export default function App() {
             task={selectedTask}
             onClose={() => setSelectedTaskId(null)}
             onUpdate={(updates: Partial<Task>) => selectedTaskId && updateTaskDetails(selectedTaskId, updates)}
+            onShare={(item) => setSharingItem(item)}
           />
         )}
       </AnimatePresence>
+
+        {sharingItem && (
+          <ShareModal 
+            item={sharingItem} 
+            onClose={() => setSharingItem(null)} 
+            onNotify={showNotification}
+          />
+        )}
+
+        <AnimatePresence>
+          {notification && (
+            <motion.div 
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className={`fixed bottom-8 right-8 z-[1000] px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 border ${
+                notification.type === 'success' 
+                  ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
+                  : 'bg-rose-50 border-rose-100 text-rose-700'
+              }`}
+            >
+              {notification.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5" />
+              ) : (
+                <AlertCircle className="w-5 h-5" />
+              )}
+              <span className="text-sm font-bold">{notification.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+  );
+}
+
+function TrashView({ 
+  tasks, 
+  onRestore, 
+  onPermanentDelete,
+  onOpenTaskDetails
+}: { 
+  tasks: Task[], 
+  onRestore: (id: string) => void, 
+  onPermanentDelete: (id: string) => void,
+  onOpenTaskDetails: (id: string) => void;
+  key?: string;
+}) {
+  if (tasks.length === 0) {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col items-center justify-center py-20 text-gray-400"
+      >
+        <div className="w-20 h-20 rounded-3xl bg-gray-50 flex items-center justify-center mb-6">
+          <Trash2 className="w-10 h-10 text-gray-200" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-2">De prullenbak is leeg</h3>
+        <p className="text-sm text-gray-500 max-w-xs text-center">
+          Taken die je verwijdert, komen hier terecht. Je kunt ze herstellen of definitief verwijderen.
+        </p>
+      </motion.div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Prullenbak</h2>
+          <p className="text-sm text-gray-500">Beheer je verwijderde taken.</p>
+        </div>
+      </div>
+
+      <div className="grid gap-3">
+        {tasks.map((task) => (
+          <motion.div
+            layout
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            key={task.id}
+            className="group bg-white border border-[var(--color-border)] rounded-2xl p-4 flex items-center justify-between hover:shadow-md transition-all"
+          >
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-gray-400" />
+              </div>
+              <div className="min-w-0 pr-4 cursor-pointer flex-1" onClick={() => onOpenTaskDetails(task.id)}>
+                <h4 className="text-sm font-bold text-gray-900 truncate mb-0.5">{task.title}</h4>
+                <div className="flex items-center gap-3 text-[11px] text-gray-500 font-medium">
+                  <span className="flex items-center gap-1 uppercase tracking-wider">
+                    <Clock className="w-3 h-3" />
+                     Verwijderd op {new Date(task.deletedAt || '').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRestore(task.id);
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-[var(--color-accent)] bg-orange-50 hover:bg-orange-100 rounded-xl text-xs font-bold transition-all"
+                title="Herstellen"
+              >
+                <Clock className="w-4 h-4" />
+                <span className="hidden sm:inline">Herstellen</span>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log(`[TrashView] Klik op definitief verwijderen voor taak: ${task.id}`);
+                  onPermanentDelete(task.id);
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl text-xs font-bold transition-all"
+                title="Definitief verwijderen"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Definitief verwijderen</span>
+              </button>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ShareModal({ item, onClose, onNotify }: { item: { type: 'task' | 'space', id: string, title: string }, onClose: () => void, onNotify?: (m: string, t?: 'success'|'error') => void }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const searchUsers = async () => {
+      if (query.length < 2) {
+        setResults([]);
+        return;
+      }
+      setLoading(true);
+      try {
+        const token = authService.getToken();
+        const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        setResults(data);
+      } catch (error) {
+        console.error('Search error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const timer = setTimeout(searchUsers, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleShare = async (targetUserId: string) => {
+    try {
+      const token = authService.getToken();
+      const res = await fetch(`/api/${item.type}s/${item.id}/share`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify({ targetUserId })
+      });
+      
+      if (res.ok) {
+        onNotify?.('Succesvol gedeeld!');
+        onClose();
+      } else {
+        const data = await res.json();
+        onNotify?.(data.error || 'Kon niet delen', 'error');
+      }
+    } catch (error) {
+      onNotify?.('Er is een fout opgetreden', 'error');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+      />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-100 p-8"
+      >
+        <div className="text-center mb-8">
+          <div className="inline-flex p-4 rounded-2xl bg-indigo-50 text-indigo-600 mb-4">
+            <Share2 className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 capitalize">
+            {item.type === 'space' ? 'Ruimte' : 'Taak'} delen
+          </h2>
+          <p className="text-sm text-gray-500 mt-2">
+            Deel "<span className="font-semibold">{item.title}</span>" met een andere gebruiker.
+          </p>
+        </div>
+
+        <div className="relative mb-6">
+          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input 
+            type="text"
+            autoFocus
+            placeholder="Zoek op naam of e-mail..."
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 pl-12 pr-4 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-sm"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar pr-2 mb-6">
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin mb-3" />
+              <p className="text-xs font-bold uppercase tracking-widest">Laden...</p>
+            </div>
+          )}
+          
+          {!loading && results.length > 0 && results.map(u => (
+            <div key={u.id} className="flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-2xl hover:bg-white hover:shadow-md transition-all">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                  {u.avatar ? <img src={u.avatar} alt="" className="w-full h-full object-cover rounded-xl" /> : u.name.charAt(0)}
+                </div>
+                <div>
+                  <p className="text-[14px] font-bold text-gray-900">{u.name}</p>
+                  <p className="text-[11px] text-gray-500 font-medium">{u.email}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => handleShare(u.id)}
+                className="px-4 py-2 bg-white border border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all font-sans"
+              >
+                Delen
+              </button>
+            </div>
+          ))}
+
+          {!loading && query.length >= 2 && results.length === 0 && (
+            <div className="text-center py-10">
+              <p className="text-sm font-medium text-gray-400 italic">Geen gebruikers gevonden...</p>
+            </div>
+          )}
+
+          {!query && (
+            <div className="flex flex-col items-center justify-center py-10">
+              <Users className="w-12 h-12 text-gray-100 mb-4" />
+              <p className="text-xs font-bold text-gray-300 uppercase tracking-widest">Typ om te zoeken</p>
+            </div>
+          )}
+        </div>
+
+        <button 
+          onClick={onClose}
+          className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-black transition-all"
+        >
+          Sluiten
+        </button>
+      </motion.div>
     </div>
   );
 }
@@ -1517,6 +2010,27 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
   const [editTitle, setEditTitle] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const statusOrder: Record<string, number> = {
+    'Te doen': 0,
+    'Bezig': 1,
+    'Klaar': 2
+  };
+
+  const priorityOrder: Record<string, number> = {
+    'Urgent': 0,
+    'Hoog': 1,
+    'Gemiddeld': 2,
+    'Laag': 3
+  };
+
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => {
+      const statusDiff = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+      if (statusDiff !== 0) return statusDiff;
+      return (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99);
+    });
+  }, [tasks]);
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-[var(--color-border)]">
       <div className="overflow-x-auto pb-32">
@@ -1531,7 +2045,7 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
-            {tasks.map(task => {
+            {sortedTasks.map(task => {
               const today = new Date();
               today.setHours(0, 0, 0, 0);
               const tomorrow = new Date(today);
@@ -1689,7 +2203,7 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
               </tr>
             );
           })}
-          {tasks.length === 0 && (
+          {sortedTasks.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-6 py-12 text-center text-[var(--color-text-sub)] text-[13px] italic">
                   Geen taken gevonden in deze ruimte.
@@ -1814,7 +2328,9 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, position 
 });
 
 
-function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void }) {
+function TaskModal({ task, onClose, onUpdate, onShare }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void, onShare?: (item: { type: 'task' | 'space', id: string, title: string }) => void }) {
+  const [latestSubtaskId, setLatestSubtaskId] = useState<string | null>(null);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <motion.div 
@@ -1845,9 +2361,20 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
               )}
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X className="w-5 h-5 text-[var(--color-text-sub)]" />
-          </button>
+          <div className="flex items-center gap-3">
+            {onShare && (
+              <button 
+                onClick={() => onShare({ type: 'task', id: task.id, title: task.title })}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all shadow-sm"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                Delen
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <X className="w-5 h-5 text-[var(--color-text-sub)]" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -1922,10 +2449,22 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                           <input 
                             type="text"
                             placeholder="Titel subtaak..."
+                            autoFocus={sub.id === latestSubtaskId}
                             value={sub.title || ''}
                             onChange={(e) => {
                               const updated = (task.subtasks || []).map(s => s && s.id === sub.id ? { ...s, title: e.target.value } : s);
                               onUpdate({ subtasks: updated });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const newId = `sub-${Date.now()}`;
+                                setLatestSubtaskId(newId);
+                                const newSub = { id: newId, title: '', completed: false };
+                                onUpdate({ 
+                                  subtasks: [...(Array.isArray(task.subtasks) ? task.subtasks : []), newSub] 
+                                });
+                              }
                             }}
                             className={`flex-1 bg-transparent border-none outline-none text-base transition-all ${sub.completed ? 'text-gray-400 line-through' : 'text-[var(--color-text-main)]'}`}
                           />
@@ -1942,8 +2481,10 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
                     })}
                     <button 
                       onClick={() => {
+                        const newId = `sub-${Date.now()}`;
+                        setLatestSubtaskId(newId);
                         onUpdate({ 
-                          subtasks: [...(Array.isArray(task.subtasks) ? task.subtasks : []), { id: `sub-${Date.now()}`, title: '', completed: false }] 
+                          subtasks: [...(Array.isArray(task.subtasks) ? task.subtasks : []), { id: newId, title: '', completed: false }] 
                         });
                       }}
                       className="w-full p-4 border-2 border-dashed border-[var(--color-border)] rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all bg-white/40 group"
