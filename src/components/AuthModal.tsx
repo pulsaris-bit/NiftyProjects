@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, User, Camera, X, AlertCircle, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, CheckCircle2, X, AlertCircle, Loader2 } from 'lucide-react';
 import { authService } from '../lib/authService';
 import { User as UserType } from '../types';
 
@@ -58,7 +58,7 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
             className="flex items-center gap-4 mb-8 justify-center lg:justify-start"
           >
             <div className="w-16 h-16 rounded-2xl bg-[var(--color-accent)] flex items-center justify-center shadow-2xl shadow-orange-900/40 transform -rotate-6">
-              <Camera className="w-8 h-8 text-white" />
+              <CheckCircle2 className="w-8 h-8 text-white" />
             </div>
             <div>
               <h1 className="text-4xl font-bold text-white tracking-tight">NiftyProjects</h1>
@@ -89,10 +89,10 @@ export function AuthModal({ onSuccess }: AuthModalProps) {
       <div className="flex-1 flex items-center justify-center p-6 md:p-12 lg:p-24 relative overflow-y-auto">
         {/* Mobile Logo */}
         <div className="md:hidden absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[var(--color-accent)] flex items-center justify-center shadow-xl shadow-orange-500/20">
-            <Camera className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-[var(--color-accent)] flex items-center justify-center shadow-xl shadow-orange-500/20 rotate-[5deg]">
+            <CheckCircle2 className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-xl text-[var(--color-text-main)] italic">Nifty.</span>
+          <span className="font-bold text-xl text-[var(--color-text-main)] tracking-tight">NiftyProjects</span>
         </div>
 
         <motion.div 

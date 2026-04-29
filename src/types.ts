@@ -44,6 +44,7 @@ export interface User {
 
 export interface Space {
   id: string;
+  userId?: string;
   name: string;
   icon: string;
   color: string;

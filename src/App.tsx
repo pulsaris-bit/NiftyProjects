@@ -838,7 +838,7 @@ export default function App() {
               </div>
             )}
             <div className={`space-y-1 overflow-y-auto max-h-[40vh] custom-scrollbar w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
-              {spaces.map(space => (
+              {spaces.filter(s => !s.userId || s.userId === currentUser?.id).map(space => (
                 <div 
                   key={space.id} 
                   onClick={() => {
@@ -886,6 +886,66 @@ export default function App() {
               ))}
             </div>
           </div>
+
+          {/* Gedeelde Ruimtes Section */}
+          {spaces.some(s => s.userId && s.userId !== currentUser?.id) && (
+            <div className="space-y-4 w-full">
+              {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-[var(--color-sidebar-text-muted)] uppercase tracking-wider px-0">Gedeeld</p>
+                </div>
+              )}
+              <div className={`space-y-1 overflow-y-auto max-h-[40vh] custom-scrollbar w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
+                {spaces.filter(s => s.userId && s.userId !== currentUser?.id).map(space => (
+                  <div 
+                    key={space.id} 
+                    onClick={() => {
+                      setActiveSpaceId(space.id);
+                      if (window.innerWidth < 1280) setIsMobileSidebarOpen(false);
+                    }}
+                    className={`group relative flex items-center rounded-xl transition-all cursor-pointer ${
+                      (isSidebarCollapsed && !isMobileSidebarOpen) ? 'justify-center w-10 h-10' : 'w-full gap-3 py-2 px-3 text-sm'
+                    } ${
+                      activeSpaceId === space.id 
+                        ? 'text-[var(--color-sidebar-text)] font-semibold bg-white/10 shadow-sm' 
+                        : 'text-[var(--color-sidebar-text-muted)] hover:text-[var(--color-sidebar-text)] hover:bg-white/5'
+                    }`}
+                    title={(isSidebarCollapsed && !isMobileSidebarOpen) ? space.name : ''}
+                  >
+                    <div className={`${(isSidebarCollapsed && !isMobileSidebarOpen) ? '' : 'w-5'} flex items-center justify-center text-base`}>
+                      {space.emoji || '📁'}
+                    </div>
+                    {!(isSidebarCollapsed && !isMobileSidebarOpen) && <span className="truncate flex-1 text-left">{space.name}</span>}
+                    
+                    {/* Hide share/settings for shared spaces unless user is owner (redundant check but safe) */}
+                    {!(isSidebarCollapsed && !isMobileSidebarOpen) && space.userId === currentUser?.id && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSharingItem({ type: 'space', id: space.id, title: space.name });
+                          }}
+                          className="p-1 hover:bg-white/10 rounded transition-all outline-none text-indigo-400"
+                          title="Ruimte delen"
+                        >
+                          <Share2 className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenSpaceModal(space);
+                          }}
+                          className="p-1 hover:bg-white/10 rounded transition-all outline-none"
+                        >
+                          <Settings className="w-3 h-3 text-[var(--color-sidebar-text)]" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </nav>
 
         <div className={`mt-auto pt-4 border-t border-white/10 w-full flex flex-col gap-4`}>
