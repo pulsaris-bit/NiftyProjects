@@ -304,8 +304,6 @@ export default function App() {
     // Fallback for special views
     const specialNames: Record<string, string> = {
       'overview': 'Overzicht',
-      'my-tasks': 'Mijn Taken',
-      'inbox': 'Inbox',
       'trash': 'Prullenbak'
     };
     
@@ -799,9 +797,7 @@ export default function App() {
             {!(isSidebarCollapsed && !isMobileSidebarOpen) && <p className="text-[11px] font-bold text-[var(--color-sidebar-text-muted)] uppercase tracking-wider px-0">Menu</p>}
             <div className={`space-y-1 w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
               {[
-                { label: 'Overzicht', key: 'overview', icon: Layout },
-                { label: 'Mijn Taken', key: 'my-tasks', icon: ListTodo },
-                { label: 'Inbox', key: 'inbox', icon: Inbox }
+                { label: 'Overzicht', key: 'overview', icon: Layout }
               ].map((item) => (
                 <button
                   key={item.key}
@@ -2435,11 +2431,6 @@ function TaskModal({ task, onClose, onUpdate, onShare }: { task: Task, onClose: 
             </div>
             <div className="flex items-baseline gap-2">
               <h2 className="text-xl font-semibold text-[var(--color-text-main)] truncate max-w-2xl">{task.title}</h2>
-              {task.createdAt && (
-                <span className="text-[10px] font-medium text-[var(--color-text-sub)] whitespace-nowrap bg-gray-100 px-2 py-0.5 rounded-full">
-                  Aangemaakt op {new Date(task.createdAt).toLocaleDateString()}
-                </span>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -2629,7 +2620,7 @@ function TaskModal({ task, onClose, onUpdate, onShare }: { task: Task, onClose: 
                     <Settings2 className="w-3.5 h-3.5" />
                     Eigenschappen
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-gray-50/50 p-4 rounded-2xl border border-[var(--color-border)]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-gray-50/50 p-4 rounded-2xl border border-[var(--color-border)]">
                     <div>
                       <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2 ml-1">Status</span>
                       <div className="flex items-center h-[42px] px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
@@ -2663,6 +2654,15 @@ function TaskModal({ task, onClose, onUpdate, onShare }: { task: Task, onClose: 
                           onChange={(e) => onUpdate({ dueDate: e.target.value })}
                           className="flex-1 bg-transparent border-none outline-none text-sm text-[var(--color-text-main)] cursor-pointer"
                         />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-2 ml-1">Aanmaakdatum</span>
+                      <div className="flex items-center h-[42px] px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
+                        <Calendar className="w-4 h-4 text-[var(--color-text-sub)] mr-2 shrink-0" />
+                        <span className="text-sm text-[var(--color-text-main)]">
+                          {task.createdAt ? new Date(task.createdAt).toLocaleDateString() : '—'}
+                        </span>
                       </div>
                     </div>
                   </div>
