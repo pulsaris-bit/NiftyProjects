@@ -261,20 +261,29 @@ app.get('/api/users/search', authenticateToken, (req: any, res) => {
 
 app.get('/api/spaces', authenticateToken, (req: any, res) => {
   const spaces = db.prepare(`
-    SELECT DISTINCT s.* FROM spaces s
+    SELECT DISTINCT s.*,
+    (SELECT COUNT(*) FROM space_members WHERE spaceId = s.id) > 0 as isShared
+    FROM spaces s
     LEFT JOIN space_members sm ON s.id = sm.spaceId
     WHERE s.userId = ? OR sm.userId = ?
   `).all(req.user.id, req.user.id);
-  res.json(spaces.map((s: any) => ({ ...s, columns: JSON.parse(s.columns || '[]') })));
+  res.json(spaces.map((s: any) => ({ ...s, isShared: !!s.isShared, columns: JSON.parse(s.columns || '[]') })));
 });
 
 app.post('/api/spaces/:id/share', authenticateToken, (req: any, res) => {
   const { targetUserId } = req.body;
   const spaceId = req.params.id;
 
-  // Check if current user is owner
-  const space: any = db.prepare('SELECT * FROM spaces WHERE id = ? AND userId = ?').get(spaceId, req.user.id);
-  if (!space) return res.status(403).json({ error: 'Alleen de eigenaar kan een ruimte delen' });
+  // Check if current user is owner or member
+  const hasAccess = db.prepare(`
+    SELECT 1 FROM spaces s
+    WHERE s.id = ? AND (
+      s.userId = ? 
+      OR EXISTS (SELECT 1 FROM space_members WHERE spaceId = s.id AND userId = ?)
+    )
+  `).get(spaceId, req.user.id, req.user.id);
+
+  if (!hasAccess) return res.status(403).json({ error: 'Je hebt geen rechten om deze ruimte te delen' });
 
   try {
     // Check if target user exists
@@ -303,8 +312,15 @@ app.post('/api/spaces', authenticateToken, (req: any, res) => {
 app.put('/api/spaces/:id', authenticateToken, (req: any, res) => {
   const { name, emoji, icon, color, columns } = req.body;
   
-  const space = db.prepare('SELECT * FROM spaces WHERE id = ? AND userId = ?').get(req.params.id, req.user.id);
-  if (!space) return res.status(403).json({ error: 'Alleen de eigenaar kan ruimte-instellingen wijzigen' });
+  const space = db.prepare(`
+    SELECT 1 FROM spaces s
+    WHERE s.id = ? AND (
+      s.userId = ? 
+      OR EXISTS (SELECT 1 FROM space_members WHERE spaceId = s.id AND userId = ?)
+    )
+  `).get(req.params.id, req.user.id, req.user.id);
+
+  if (!space) return res.status(403).json({ error: 'Je hebt geen rechten om deze ruimte-instellingen te wijzigen' });
 
   const stmt = db.prepare('UPDATE spaces SET name = ?, emoji = ?, icon = ?, color = ?, columns = ? WHERE id = ?');
   stmt.run(name, emoji, icon, color, JSON.stringify(columns), req.params.id);
@@ -312,8 +328,15 @@ app.put('/api/spaces/:id', authenticateToken, (req: any, res) => {
 });
 
 app.delete('/api/spaces/:id', authenticateToken, (req: any, res) => {
-  const space = db.prepare('SELECT * FROM spaces WHERE id = ? AND userId = ?').get(req.params.id, req.user.id);
-  if (!space) return res.status(403).json({ error: 'Alleen de eigenaar kan een ruimte verwijderen' });
+  const space = db.prepare(`
+    SELECT 1 FROM spaces s
+    WHERE s.id = ? AND (
+      s.userId = ? 
+      OR EXISTS (SELECT 1 FROM space_members WHERE spaceId = s.id AND userId = ?)
+    )
+  `).get(req.params.id, req.user.id, req.user.id);
+
+  if (!space) return res.status(403).json({ error: 'Je hebt geen rechten om deze ruimte te verwijderen' });
 
   const transaction = db.transaction(() => {
     // Collect all tasks in this space to clean up their members

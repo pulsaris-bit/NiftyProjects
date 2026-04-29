@@ -48,4 +48,5 @@ export interface Space {
   color: string;
   emoji?: string;
   columns?: string[];
+  isShared?: boolean;
 }

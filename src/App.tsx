@@ -234,46 +234,50 @@ export default function App() {
   const [sharingItem, setSharingItem] = useState<{ type: 'task' | 'space', id: string, title: string } | null>(null);
   const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId), [tasks, selectedTaskId]);
 
+  const loadData = React.useCallback(async () => {
+    if (!currentUser) {
+      setTasks([]);
+      setSpaces(INITIAL_SPACES);
+      return;
+    }
+    const token = authService.getToken();
+    if (!token) return;
+
+    try {
+      const [spacesRes, tasksRes] = await Promise.all([
+        fetch('/api/spaces', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+
+      if (spacesRes.ok) {
+        const fetchedSpaces = await spacesRes.json();
+        if (fetchedSpaces.length > 0) {
+          setSpaces(fetchedSpaces);
+          // Only set active space if current active space doesn't exist anymore or it's the first load
+          setActiveSpaceId(prev => {
+            const exists = fetchedSpaces.some((s: any) => s.id === prev) || ['overview', 'inbox', 'trash', 'my-tasks'].includes(prev);
+            return exists ? prev : fetchedSpaces[0].id;
+          });
+        }
+      }
+      if (tasksRes.ok) {
+        const fetchedTasks = await tasksRes.json();
+        const normalizedTasks = fetchedTasks.map((t: any) => ({
+          ...t,
+          subtasks: Array.isArray(t.subtasks) ? t.subtasks : [],
+          attachments: Array.isArray(t.attachments) ? t.attachments : []
+        }));
+        setTasks(normalizedTasks);
+      }
+    } catch (error) {
+      console.error('Fout bij laden van data:', error);
+    }
+  }, [currentUser]);
+
   // Load initial data from API
   useEffect(() => {
-    async function loadData() {
-      if (!currentUser) {
-        setTasks([]);
-        setSpaces(INITIAL_SPACES);
-        return;
-      }
-      const token = authService.getToken();
-      if (!token) return;
-
-      try {
-        const [spacesRes, tasksRes] = await Promise.all([
-          fetch('/api/spaces', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/tasks', { headers: { 'Authorization': `Bearer ${token}` } })
-        ]);
-
-        if (spacesRes.ok) {
-          const fetchedSpaces = await spacesRes.json();
-          if (fetchedSpaces.length > 0) {
-            setSpaces(fetchedSpaces);
-            setActiveSpaceId(fetchedSpaces[0].id);
-          }
-        }
-        if (tasksRes.ok) {
-          const fetchedTasks = await tasksRes.json();
-          // The server now returns parsed objects for subtasks and attachments
-          const normalizedTasks = fetchedTasks.map((t: any) => ({
-            ...t,
-            subtasks: Array.isArray(t.subtasks) ? t.subtasks : [],
-            attachments: Array.isArray(t.attachments) ? t.attachments : []
-          }));
-          setTasks(normalizedTasks);
-        }
-      } catch (error) {
-        console.error('Fout bij laden van data:', error);
-      }
-    }
     loadData();
-  }, [currentUser]);
+  }, [loadData]);
 
   useEffect(() => {
     if (isResizing) {
@@ -830,7 +834,7 @@ export default function App() {
               </div>
             )}
             <div className={`space-y-1 overflow-y-auto max-h-[40vh] custom-scrollbar w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
-              {spaces.filter(s => !s.userId || s.userId === currentUser?.id).map(space => (
+              {spaces.filter(s => (!s.isShared) && s.userId === currentUser?.id).map(space => (
                 <div 
                   key={space.id} 
                   onClick={() => {
@@ -880,7 +884,7 @@ export default function App() {
           </div>
 
           {/* Gedeelde Ruimtes Section */}
-          {spaces.some(s => s.userId && s.userId !== currentUser?.id) && (
+          {spaces.some(s => s.isShared) && (
             <div className="space-y-4 w-full">
               {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
                 <div className="flex items-center justify-between">
@@ -888,7 +892,7 @@ export default function App() {
                 </div>
               )}
               <div className={`space-y-1 overflow-y-auto max-h-[40vh] custom-scrollbar w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex flex-col items-center' : ''}`}>
-                {spaces.filter(s => s.userId && s.userId !== currentUser?.id).map(space => (
+                {spaces.filter(s => s.isShared).map(space => (
                   <div 
                     key={space.id} 
                     onClick={() => {
@@ -909,8 +913,7 @@ export default function App() {
                     </div>
                     {!(isSidebarCollapsed && !isMobileSidebarOpen) && <span className="truncate flex-1 text-left">{space.name}</span>}
                     
-                    {/* Hide share/settings for shared spaces unless user is owner (redundant check but safe) */}
-                    {!(isSidebarCollapsed && !isMobileSidebarOpen) && space.userId === currentUser?.id && (
+                    {!(isSidebarCollapsed && !isMobileSidebarOpen) && (
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         <button
                           onClick={(e) => {
@@ -1338,6 +1341,7 @@ export default function App() {
             item={sharingItem} 
             onClose={() => setSharingItem(null)} 
             onNotify={showNotification}
+            onSuccess={loadData}
           />
         )}
 
@@ -1461,7 +1465,7 @@ function TrashView({
   );
 }
 
-function ShareModal({ item, onClose, onNotify }: { item: { type: 'task' | 'space', id: string, title: string }, onClose: () => void, onNotify?: (m: string, t?: 'success'|'error') => void }) {
+function ShareModal({ item, onClose, onNotify, onSuccess }: { item: { type: 'task' | 'space', id: string, title: string }, onClose: () => void, onNotify?: (m: string, t?: 'success'|'error') => void, onSuccess?: () => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1505,6 +1509,7 @@ function ShareModal({ item, onClose, onNotify }: { item: { type: 'task' | 'space
       
       if (res.ok) {
         onNotify?.('Succesvol gedeeld!');
+        onSuccess?.();
         onClose();
       } else {
         const data = await res.json();
