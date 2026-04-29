@@ -1323,6 +1323,12 @@ export default function App() {
             task={selectedTask}
             onClose={() => setSelectedTaskId(null)}
             onUpdate={(updates: Partial<Task>) => selectedTaskId && updateTaskDetails(selectedTaskId, updates)}
+            onDelete={() => {
+              if (selectedTaskId) {
+                deleteTask(selectedTaskId);
+                setSelectedTaskId(null);
+              }
+            }}
           />
         )}
       </AnimatePresence>
@@ -2400,7 +2406,7 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, position 
 });
 
 
-function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void }) {
+function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void, onDelete: () => void }) {
   const [latestSubtaskId, setLatestSubtaskId] = useState<string | null>(null);
 
   return (
@@ -2428,7 +2434,18 @@ function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => voi
               <h2 className="text-lg md:text-xl font-semibold text-[var(--color-text-main)] truncate">{task.title}</h2>
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 md:gap-3 shrink-0">
+            <button 
+              onClick={() => {
+                if (window.confirm('Weet je zeker dat je deze taak wilt verwijderen?')) {
+                  onDelete();
+                }
+              }}
+              className="p-1.5 md:p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors"
+              title="Verwijder taak"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
             <button onClick={onClose} className="p-1.5 md:p-2 hover:bg-gray-100 rounded-full transition-colors">
               <X className="w-5 h-5 text-[var(--color-text-sub)]" />
             </button>
