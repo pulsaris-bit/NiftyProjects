@@ -1327,7 +1327,6 @@ export default function App() {
             task={selectedTask}
             onClose={() => setSelectedTaskId(null)}
             onUpdate={(updates: Partial<Task>) => selectedTaskId && updateTaskDetails(selectedTaskId, updates)}
-            onShare={(item) => setSharingItem(item)}
           />
         )}
       </AnimatePresence>
@@ -1533,7 +1532,7 @@ function ShareModal({ item, onClose, onNotify }: { item: { type: 'task' | 'space
             <Share2 className="w-8 h-8" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 capitalize">
-            {item.type === 'space' ? 'Ruimte' : 'Taak'} delen
+            Ruimte delen
           </h2>
           <p className="text-sm text-gray-500 mt-2">
             Deel "<span className="font-semibold">{item.title}</span>" met een andere gebruiker.
@@ -2405,7 +2404,7 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, position 
 });
 
 
-function TaskModal({ task, onClose, onUpdate, onShare }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void, onShare?: (item: { type: 'task' | 'space', id: string, title: string }) => void }) {
+function TaskModal({ task, onClose, onUpdate }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void }) {
   const [latestSubtaskId, setLatestSubtaskId] = useState<string | null>(null);
 
   return (
@@ -2434,15 +2433,6 @@ function TaskModal({ task, onClose, onUpdate, onShare }: { task: Task, onClose: 
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {onShare && (
-              <button 
-                onClick={() => onShare({ type: 'task', id: task.id, title: task.title })}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all shadow-sm"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                Delen
-              </button>
-            )}
             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
               <X className="w-5 h-5 text-[var(--color-text-sub)]" />
             </button>
