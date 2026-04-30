@@ -1092,8 +1092,16 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-6 gap-2">
-                    {['🎨', '💻', '📈', '🚀', '🧠', '📁', '🏠', '📅', '🔐', '🍕', '🏃', '🔔'].map(e => (
+                  <div className="grid grid-cols-7 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                    {[
+                      '📁', '💼', '📈', '🚀', '🎨', '💻', '🧠', 
+                      '📅', '🏠', '🔐', '🔔', '💡', '🎯', '✅',
+                      '🔧', '🛠️', '⚡', '🌐', '📱', '🤖', '📊',
+                      '📌', '✉️', '📝', '🤝', '👥', '💬', '💭',
+                      '🏃', '🏋️', '🧘', '⚽', '🚲', '🍎', '💧',
+                      '🎮', '📸', '🎭', '🎸', '🎬', '🌈', '💎',
+                      '⚠️', '🚩', '⏳', '🔥', '✨', '🌟', '🍀'
+                    ].map(e => (
                       <button
                         key={e}
                         onClick={() => setNewSpaceEmoji(e)}
