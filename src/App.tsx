@@ -1265,7 +1265,7 @@ export default function App() {
               </div>
               <input 
                 type="text" 
-                placeholder="Snel een nieuwe taak toevoegen... (Druk op Enter)"
+                placeholder="Nieuwe Taak"
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addTask()}
