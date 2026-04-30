@@ -791,7 +791,7 @@ export default function App() {
               placeholder="Zoeken..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/5 border border-white/20 rounded-lg pl-9 pr-3 py-2 text-[13px] text-[var(--color-sidebar-text)] outline-none transition-all focus:border-[var(--color-accent)] focus:bg-white/10 placeholder:text-[var(--color-sidebar-text-muted)]"
+              className="w-full bg-white/10 border border-white/20 rounded-xl pl-10 pr-4 py-2.5 text-base leading-normal text-[var(--color-sidebar-text)] outline-none transition-all focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20 focus:bg-white/15 placeholder:text-[var(--color-sidebar-text-muted)]"
             />
           </div>
         )}
@@ -1226,7 +1226,7 @@ export default function App() {
                       autoFocus
                       type="text"
                       placeholder="Bijv. 'Wachten' of 'Review'..."
-                      className="w-full bg-gray-50 border border-[var(--color-border)] rounded-xl px-4 py-3 text-sm mb-4 outline-none focus:border-[var(--color-accent)] focus:ring-4 focus:ring-orange-500/5 transition-all text-[var(--color-text-main)] font-medium"
+                      className="w-full bg-gray-50 border border-[var(--color-border)] rounded-xl px-4 py-3 text-base mb-4 outline-none focus:border-[var(--color-accent)] focus:ring-4 focus:ring-orange-500/5 transition-all text-[var(--color-text-main)] font-medium"
                       value={newColumnName}
                       onChange={(e) => setNewColumnName(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addColumn(newColumnName)}
@@ -1269,7 +1269,7 @@ export default function App() {
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addTask()}
-                className="flex-1 text-sm border-none focus:ring-0 p-0 outline-none text-[var(--color-text-main)] font-medium placeholder:text-gray-400"
+                className="flex-1 text-base border-none focus:ring-0 p-0 outline-none text-[var(--color-text-main)] font-medium placeholder:text-gray-400"
               />
               {newTaskTitle.trim() && (
                 <button 
