@@ -120,7 +120,7 @@ const INITIAL_TASKS: Task[] = [
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [spaces, setSpaces] = useState<Space[]>(INITIAL_SPACES);
-  const [activeSpaceId, setActiveSpaceId] = useState<string>('space-1');
+  const [activeSpaceId, setActiveSpaceId] = useState<string>('overview');
   const [view, setView] = useState<'board' | 'list'>('board');
   const [searchQuery, setSearchQuery] = useState('');
 
