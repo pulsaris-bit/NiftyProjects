@@ -77,15 +77,16 @@ export function ProfileModal({ user, onClose, onUpdate, onLogout, showNotificati
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-sm my-auto border border-gray-100 max-h-[90vh] flex flex-col"
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-sm my-auto border border-gray-100 max-h-[90vh] flex flex-col overflow-hidden"
       >
-        <div className="p-8 overflow-y-auto custom-scrollbar">
-          <div className="flex items-center justify-between mb-6 sticky top-0 bg-white z-10 pb-2">
-            <h2 className="text-xl font-bold text-gray-900">Profiel Instellingen</h2>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
-          </div>
+        <div className="overflow-y-auto custom-scrollbar flex-1">
+          <div className="px-8 pb-8 pt-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">Profiel Instellingen</h2>
+              <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="flex flex-col items-center gap-4">
@@ -260,6 +261,7 @@ export function ProfileModal({ user, onClose, onUpdate, onLogout, showNotificati
               </button>
             </div>
           )}
+          </div>
         </div>
       </motion.div>
     </div>

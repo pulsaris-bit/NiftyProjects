@@ -41,19 +41,38 @@
 
 /* Custom scrollbar for that clean dashboard feel */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
+  border: 4px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb {
   background: #E5E7EB;
-  border-radius: 10px;
+  border-radius: 100px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #D1D5DB;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Sidebar specific scrollbar */
+.custom-scrollbar-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border: 4px solid transparent;
+  background-clip: padding-box;
 }

@@ -753,7 +753,7 @@ export default function App() {
       <aside 
         style={{ 
           width: (isSidebarCollapsed && !isMobileSidebarOpen) 
-            ? 72 
+            ? 64 
             : (window.innerWidth >= 1024 ? sidebarWidth : 280) 
         }}
         className={`
@@ -761,7 +761,7 @@ export default function App() {
           lg:relative lg:translate-x-0 transition-transform duration-300
           ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           ${isResizing ? '' : 'transition-[width]'}
-          ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'p-4 items-center' : 'p-6 lg:pt-6'}
+          ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'p-3 items-center' : 'p-6 lg:pt-6'}
         `}
       >
         <div className={`flex items-center justify-between mb-10 shrink-0 w-full ${(isSidebarCollapsed && !isMobileSidebarOpen) ? 'flex-col gap-4' : ''}`}>
