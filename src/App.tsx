@@ -1275,8 +1275,14 @@ export default function App() {
                 type="text" 
                 placeholder="Nieuwe Taak"
                 value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  setNewTaskTitle(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') addTask();
+                }}
                 className="flex-1 text-base border-none focus:ring-0 p-0 outline-none text-[var(--color-text-main)] font-medium placeholder:text-gray-400"
               />
               {newTaskTitle.trim() && (
@@ -1822,14 +1828,18 @@ const SortableColumn = React.memo(function SortableColumn({ status, taskCount, c
           {isEditing ? (
             <input 
               autoFocus
-              className="text-sm font-semibold bg-white border border-[var(--color-accent)] rounded px-1 outline-none w-full"
+              className="text-base font-semibold bg-white border border-[var(--color-accent)] rounded px-1 outline-none w-full"
               value={editName}
-              onChange={(e) => setEditName(e.target.value)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setEditName(e.target.value);
+              }}
               onBlur={() => {
                 onRename(editName);
                 setIsEditing(false);
               }}
               onKeyDown={(e) => {
+                e.stopPropagation();
                 if (e.key === 'Enter') {
                   onRename(editName);
                   setIsEditing(false);
@@ -1974,14 +1984,18 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
           {isEditing ? (
             <input 
               autoFocus
-              className="text-sm font-medium text-[var(--color-text-main)] bg-gray-50 border border-[var(--color-accent)] rounded px-1 outline-none w-full"
+              className="text-base font-medium text-[var(--color-text-main)] bg-gray-50 border border-[var(--color-accent)] rounded px-1 min-h-[32px] outline-none w-full"
               value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setEditTitle(e.target.value);
+              }}
               onBlur={() => {
                 onRename?.(task.id, editTitle);
                 setIsEditing(false);
               }}
               onKeyDown={(e) => {
+                e.stopPropagation();
                 if (e.key === 'Enter') {
                   onRename?.(task.id, editTitle);
                   setIsEditing(false);
