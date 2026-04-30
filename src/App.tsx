@@ -2444,12 +2444,12 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
       >
         {/* Header */}
         <div className="px-5 py-4 md:px-8 md:py-5 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
+          <div className="flex items-center gap-3 md:gap-4 min-w-0">
             <div className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider shrink-0 ${PRIORITY_STYLES[task.priority] || 'bg-gray-100 text-gray-600'}`}>
               {task.priority}
             </div>
-            <div className="flex items-baseline gap-2 overflow-hidden">
-              <h2 className="text-lg md:text-xl font-semibold text-[var(--color-text-main)] truncate">{task.title}</h2>
+            <div className="flex items-baseline gap-2 min-w-0">
+              <h2 className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight break-words">{task.title}</h2>
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
