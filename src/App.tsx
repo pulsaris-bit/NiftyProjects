@@ -54,6 +54,9 @@ import {
   useDraggable, 
   useDroppable,
   PointerSensor,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   rectIntersection,
@@ -65,6 +68,7 @@ import {
   SortableContext, 
   verticalListSortingStrategy,
   horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -1617,10 +1621,19 @@ function BoardView({ tasks, allTasks, setTasks, activeSpaceId, searchQuery, colu
   const statuses = columns;
   
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 5,
+        distance: 10,
       },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
@@ -1907,7 +1920,7 @@ const SortableTaskCard = React.memo(function SortableTaskCard({ task, onStatusCh
       style={style}
       {...listeners} 
       {...attributes}
-      className={`${isDragging ? 'opacity-30' : ''} touch-none`}
+      className={`${isDragging ? 'opacity-30 touch-none' : ''}`}
     >
       <TaskCard 
         task={task} 
