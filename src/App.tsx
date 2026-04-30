@@ -26,6 +26,7 @@ import {
   Briefcase,
   Trash2,
   Edit2,
+  Pencil,
   GripVertical,
   Menu,
   X,
@@ -790,7 +791,11 @@ export default function App() {
               type="text" 
               placeholder="Zoeken..." 
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setSearchQuery(e.target.value);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
               className="w-full bg-white/10 border border-white/20 rounded-xl pl-10 pr-4 py-2.5 text-base leading-normal text-[var(--color-sidebar-text)] outline-none transition-all focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20 focus:bg-white/15 placeholder:text-[var(--color-sidebar-text-muted)]"
             />
           </div>
@@ -2448,6 +2453,15 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, position 
 
 function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void, onDelete: () => void }) {
   const [latestSubtaskId, setLatestSubtaskId] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+
+  const handleTitleSubmit = () => {
+    if (editTitle.trim() && editTitle !== task.title) {
+      onUpdate({ title: editTitle.trim() });
+    }
+    setIsEditingTitle(false);
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -2466,12 +2480,43 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
       >
         {/* Header */}
         <div className="px-5 py-4 md:px-8 md:py-5 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3 md:gap-4 min-w-0">
+          <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
             <div className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider shrink-0 ${PRIORITY_STYLES[task.priority] || 'bg-gray-100 text-gray-600'}`}>
               {task.priority}
             </div>
-            <div className="flex items-baseline gap-2 min-w-0">
-              <h2 className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight break-words">{task.title}</h2>
+            <div className="flex items-baseline gap-2 min-w-0 flex-1">
+              {isEditingTitle ? (
+                <input
+                  autoFocus
+                  type="text"
+                  className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight w-full outline-none bg-gray-50 rounded px-1 border border-[var(--color-accent)]"
+                  value={editTitle}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setEditTitle(e.target.value);
+                  }}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') handleTitleSubmit();
+                    if (e.key === 'Escape') {
+                      setEditTitle(task.title);
+                      setIsEditingTitle(false);
+                    }
+                  }}
+                  onBlur={handleTitleSubmit}
+                />
+              ) : (
+                <h2 
+                  onClick={() => {
+                    setEditTitle(task.title);
+                    setIsEditingTitle(true);
+                  }}
+                  className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight break-words cursor-text hover:bg-gray-50 rounded px-1 transition-colors group flex items-center gap-2"
+                >
+                  {task.title}
+                  <Pencil className="w-3.5 h-3.5 opacity-0 group-hover:opacity-40 shrink-0" />
+                </h2>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
@@ -2508,7 +2553,11 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
                     className="w-full h-40 md:h-48 p-3.5 md:p-4 bg-gray-50 border border-[var(--color-border)] rounded-2xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all resize-none leading-relaxed"
                     placeholder="Voeg een gedetailleerde beschrijving toe..."
                     value={task.description || ''}
-                    onChange={(e) => onUpdate({ description: e.target.value })}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      onUpdate({ description: e.target.value });
+                    }}
+                    onKeyDown={(e) => e.stopPropagation()}
                   />
                 </section>
 
@@ -2524,7 +2573,11 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
                       className="flex-1 p-2.5 md:p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all"
                       placeholder="https://example.com"
                       value={task.link || ''}
-                      onChange={(e) => onUpdate({ link: e.target.value })}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onUpdate({ link: e.target.value });
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
                     />
                     {task.link && (
                       <a 
@@ -2567,10 +2620,12 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
                             autoFocus={sub.id === latestSubtaskId}
                             value={sub.title || ''}
                             onChange={(e) => {
+                              e.stopPropagation();
                               const updated = (task.subtasks || []).map(s => s && s.id === sub.id ? { ...s, title: e.target.value } : s);
                               onUpdate({ subtasks: updated });
                             }}
                             onKeyDown={(e) => {
+                              e.stopPropagation();
                               if (e.key === 'Enter') {
                                 e.preventDefault();
                                 const newId = `sub-${Date.now()}`;
