@@ -1318,6 +1318,7 @@ export default function App() {
                 key="board" 
                 tasks={filteredTasks}
                 allTasks={tasks} 
+                spaces={spaces}
                 setTasks={setTasks}
                 activeSpaceId={activeSpaceId}
                 searchQuery={searchQuery}
@@ -1335,6 +1336,7 @@ export default function App() {
               <ListView 
                 key="list" 
                 tasks={filteredTasks} 
+                spaces={spaces}
                 onStatusChange={updateTaskStatus}
                 onPriorityChange={updateTaskPriority}
                 onRenameTask={renameTask}
@@ -1639,7 +1641,7 @@ function ShareModal({ item, onClose, onNotify, onSuccess }: { item: { type: 'tas
 }
 
 // Sub-components
-function BoardView({ tasks, allTasks, setTasks, activeSpaceId, searchQuery, columns, onStatusChange, onPriorityChange, onRemoveColumn, onRenameColumn, onReorderColumns, onRenameTask, onDeleteTask, onOpenTaskDetails }: { tasks: Task[], allTasks: Task[], setTasks: React.Dispatch<React.SetStateAction<Task[]>>, activeSpaceId: string, searchQuery: string, columns: string[], onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRemoveColumn: (name: string) => void, onRenameColumn: (old: string, newName: string) => void, onReorderColumns: (cols: string[]) => void, onRenameTask: (id: string, title: string) => void, onDeleteTask: (id: string) => void, onOpenTaskDetails: (id: string) => void, key?: string }) {
+function BoardView({ tasks, allTasks, spaces, setTasks, activeSpaceId, searchQuery, columns, onStatusChange, onPriorityChange, onRemoveColumn, onRenameColumn, onReorderColumns, onRenameTask, onDeleteTask, onOpenTaskDetails }: { tasks: Task[], allTasks: Task[], spaces: Space[], setTasks: React.Dispatch<React.SetStateAction<Task[]>>, activeSpaceId: string, searchQuery: string, columns: string[], onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRemoveColumn: (name: string) => void, onRenameColumn: (old: string, newName: string) => void, onReorderColumns: (cols: string[]) => void, onRenameTask: (id: string, title: string) => void, onDeleteTask: (id: string) => void, onOpenTaskDetails: (id: string) => void, key?: string }) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const statuses = columns;
   
@@ -1771,6 +1773,7 @@ function BoardView({ tasks, allTasks, setTasks, activeSpaceId, searchQuery, colu
                       <SortableTaskCard 
                         key={task.id} 
                         task={task} 
+                        spaces={spaces}
                         onStatusChange={onStatusChange} 
                         onPriorityChange={onPriorityChange} 
                         onRenameTask={onRenameTask}
@@ -1789,7 +1792,7 @@ function BoardView({ tasks, allTasks, setTasks, activeSpaceId, searchQuery, colu
       <DragOverlay dropAnimation={dropAnimation}>
         {activeTask ? (
           <div className="w-[280px] cursor-grabbing">
-            <TaskCard task={activeTask} onStatusChange={() => {}} onPriorityChange={() => {}} isGhost />
+            <TaskCard task={activeTask} spaces={spaces} onStatusChange={() => {}} onPriorityChange={() => {}} isGhost />
           </div>
         ) : null}
       </DragOverlay>
@@ -1921,7 +1924,7 @@ const SortableColumn = React.memo(function SortableColumn({ status, taskCount, c
   );
 });
 
-const SortableTaskCard = React.memo(function SortableTaskCard({ task, onStatusChange, onPriorityChange, onRenameTask, onDeleteTask, onOpenTaskDetails }: { task: Task, onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRenameTask: (id: string, title: string) => void, onDeleteTask: (id: string) => void, onOpenTaskDetails?: (id: string) => void, key?: string }) {
+const SortableTaskCard = React.memo(function SortableTaskCard({ task, spaces, onStatusChange, onPriorityChange, onRenameTask, onDeleteTask, onOpenTaskDetails }: { task: Task, spaces?: Space[], onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRenameTask: (id: string, title: string) => void, onDeleteTask: (id: string) => void, onOpenTaskDetails?: (id: string) => void, key?: string }) {
   const {
     attributes,
     listeners,
@@ -1951,6 +1954,7 @@ const SortableTaskCard = React.memo(function SortableTaskCard({ task, onStatusCh
     >
       <TaskCard 
         task={task} 
+        spaces={spaces}
         onStatusChange={onStatusChange} 
         onPriorityChange={onPriorityChange} 
         onRename={onRenameTask}
@@ -1961,7 +1965,7 @@ const SortableTaskCard = React.memo(function SortableTaskCard({ task, onStatusCh
   );
 });
 
-const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriorityChange, onRename, onDelete, onOpenDetails, isGhost }: { task: Task, onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRename?: (id: string, title: string) => void, onDelete?: (id: string) => void, onOpenDetails?: (id: string) => void, isGhost?: boolean }) {
+const TaskCard = React.memo(function TaskCard({ task, spaces, onStatusChange, onPriorityChange, onRename, onDelete, onOpenDetails, isGhost }: { task: Task, spaces?: Space[], onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRename?: (id: string, title: string) => void, onDelete?: (id: string) => void, onOpenDetails?: (id: string) => void, isGhost?: boolean }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -1990,6 +1994,20 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
     >
       <div className="flex justify-between items-start gap-2">
         <div className="flex-1">
+          {spaces && task.spaceId && (
+            <div className="flex items-center gap-1.5 mb-1">
+              {(() => {
+                const space = spaces.find(s => s.id === task.spaceId);
+                if (!space) return null;
+                return (
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-bold text-gray-500 border border-gray-200/50">
+                    <span>{space.emoji || '📁'}</span>
+                    <span className="truncate max-w-[80px]">{space.name}</span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
           {isEditing ? (
             <input 
               autoFocus
@@ -2146,7 +2164,7 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
   );
 });
 
-function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDeleteTask, onOpenTaskDetails }: { tasks: Task[], onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRenameTask: (id: string, title: string) => void, onDeleteTask: (id: string) => void, onOpenTaskDetails: (id: string) => void, key?: string }) {
+function ListView({ tasks, spaces, onStatusChange, onPriorityChange, onRenameTask, onDeleteTask, onOpenTaskDetails }: { tasks: Task[], spaces: Space[], onStatusChange: (id: string, s: Status) => void, onPriorityChange: (id: string, p: Priority) => void, onRenameTask: (id: string, title: string) => void, onDeleteTask: (id: string) => void, onOpenTaskDetails: (id: string) => void, key?: string }) {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -2233,6 +2251,20 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
                         />
                       ) : (
                         <div className="flex flex-col gap-1">
+                          {spaces && task.spaceId && (
+                            <div className="flex items-center gap-1">
+                              {(() => {
+                                const space = spaces.find(s => s.id === task.spaceId);
+                                if (!space) return null;
+                                return (
+                                  <div className="flex items-center gap-1 px-1 py-0.5 rounded bg-gray-50 text-[9px] font-bold text-gray-400 border border-gray-100">
+                                    <span>{space.emoji || '📁'}</span>
+                                    <span>{space.name}</span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
                           <div className="flex items-center gap-2">
                             {isOverdue && <AlertCircle className="w-3.5 h-3.5 text-red-500 mr-1" />}
                             {task.title}
