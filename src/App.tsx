@@ -1350,6 +1350,7 @@ export default function App() {
         {selectedTask && (
           <TaskModal 
             task={selectedTask}
+            spaces={spaces}
             onClose={() => setSelectedTaskId(null)}
             onUpdate={(updates: Partial<Task>) => selectedTaskId && updateTaskDetails(selectedTaskId, updates)}
             onDelete={() => {
@@ -2601,7 +2602,7 @@ function LabelPicker({ taskLabels, onUpdate }: { taskLabels: Label[], onUpdate: 
   );
 }
 
-function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void, onDelete: () => void }) {
+function TaskModal({ task, spaces, onClose, onUpdate, onDelete }: { task: Task, spaces: Space[], onClose: () => void, onUpdate: (updates: Partial<Task>) => void, onDelete: () => void }) {
   const [latestSubtaskId, setLatestSubtaskId] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -2612,6 +2613,8 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
     }
     setIsEditingTitle(false);
   };
+
+  const currentSpace = useMemo(() => spaces.find(s => s.id === task.spaceId), [spaces, task.spaceId]);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -2747,6 +2750,34 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
                         <ExternalLink className="w-5 h-5" />
                       </a>
                     )}
+                  </div>
+                </section>
+
+                {/* Space Assignment */}
+                <section>
+                  <label className="flex items-center gap-2 text-[10px] md:text-xs font-bold text-[var(--color-text-sub)] uppercase tracking-wider mb-2.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    Ruimte
+                  </label>
+                  <div className="relative">
+                    <select 
+                      value={task.spaceId}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onUpdate({ spaceId: e.target.value });
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      className="w-full p-2.5 md:p-3 bg-gray-50 border border-[var(--color-border)] rounded-xl focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent outline-none text-sm transition-all appearance-none pr-10"
+                    >
+                      {spaces.map(space => (
+                        <option key={space.id} value={space.id}>
+                          {space.emoji || '📁'} {space.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--color-text-sub)]">
+                      <ChevronDown className="w-4 h-4" />
+                    </div>
                   </div>
                 </section>
               </div>
