@@ -1,6 +1,6 @@
-# Taskly - Moderne Taakbeheer Applicatie
+# NiftyProjects - Moderne Taakbeheer Applicatie
 
-Taskly is een krachtige en intuïtieve "Full-Stack" taakbeheer-applicatie ontworpen voor focus en efficiëntie. Gebruikers kunnen taken organiseren in verschillende "Spaces", prioriteiten toewijzen, labels gebruiken en de voortgang van hun werk visualiseren via flexibele weergaven.
+NiftyProjects is een krachtige en intuïtieve "Full-Stack" taakbeheer-applicatie ontworpen voor focus en efficiëntie. Gebruikers kunnen taken organiseren in verschillende "Spaces", prioriteiten toewijzen, labels gebruiken en de voortgang van hun werk visualiseren via flexibele weergaven.
 
 ## 🚀 Functionaliteiten
 
