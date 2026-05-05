@@ -18,6 +18,12 @@ export interface SubTask {
   completed: boolean;
 }
 
+export interface Label {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -31,6 +37,7 @@ export interface Task {
   attachments?: Attachment[];
   link?: string;
   subtasks?: SubTask[];
+  labels?: Label[];
 }
 
 export interface User {

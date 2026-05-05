@@ -82,6 +82,7 @@ db.exec(`
     dueDate TEXT,
     subtasks TEXT, -- JSON string
     attachments TEXT, -- JSON string
+    labels TEXT, -- JSON string
     isDeleted INTEGER DEFAULT 0,
     deletedAt TEXT,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -120,6 +121,18 @@ try {
     console.log('Database gemigreerd: isDeleted en deletedAt kolommen toegevoegd aan tasks.');
   } catch (err) {
     console.error('Migratiefout softDelete:', err);
+  }
+}
+
+// Migration: Ensure labels column exists
+try {
+  db.prepare('SELECT labels FROM tasks LIMIT 1').get();
+} catch (e) {
+  try {
+    db.exec('ALTER TABLE tasks ADD COLUMN labels TEXT');
+    console.log('Database gemigreerd: labels kolom toegevoegd aan tasks.');
+  } catch (err) {
+    console.error('Migratiefout labels:', err);
   }
 }
 
@@ -389,7 +402,8 @@ app.get('/api/tasks', authenticateToken, (req: any, res) => {
     ...t,
     isDeleted: !!t.isDeleted,
     subtasks: JSON.parse(t.subtasks || '[]'),
-    attachments: JSON.parse(t.attachments || '[]')
+    attachments: JSON.parse(t.attachments || '[]'),
+    labels: JSON.parse(t.labels || '[]')
   })));
 });
 
@@ -434,8 +448,8 @@ app.post('/api/tasks', authenticateToken, (req: any, res) => {
     }
     
     const stmt = db.prepare(`
-      INSERT INTO tasks (id, userId, spaceId, title, description, status, priority, link, dueDate, subtasks, attachments, isDeleted, deletedAt, createdAt) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (id, userId, spaceId, title, description, status, priority, link, dueDate, subtasks, attachments, labels, isDeleted, deletedAt, createdAt) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       task.id, 
@@ -449,6 +463,7 @@ app.post('/api/tasks', authenticateToken, (req: any, res) => {
       task.dueDate || null,
       JSON.stringify(parseJSON(task.subtasks)), 
       JSON.stringify(parseJSON(task.attachments)),
+      JSON.stringify(parseJSON(task.labels)),
       task.isDeleted ? 1 : 0,
       task.deletedAt || null,
       task.createdAt
@@ -474,19 +489,21 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
 
   if (!current) return res.status(403).json({ error: 'Geen toegang tot deze taak of taak bestaat niet' });
 
-  // Handle subtasks and attachments merging
+  // Handle subtasks, attachments, and labels merging
   const existingSubtasks = typeof current.subtasks === 'string' ? JSON.parse(current.subtasks || '[]') : (current.subtasks || []);
   const existingAttachments = typeof current.attachments === 'string' ? JSON.parse(current.attachments || '[]') : (current.attachments || []);
+  const existingLabels = typeof current.labels === 'string' ? JSON.parse(current.labels || '[]') : (current.labels || []);
 
   const updatedSubtasks = updates.subtasks !== undefined ? parseJSON(updates.subtasks) : existingSubtasks;
   const updatedAttachments = updates.attachments !== undefined ? parseJSON(updates.attachments) : existingAttachments;
+  const updatedLabels = updates.labels !== undefined ? parseJSON(updates.labels) : existingLabels;
 
   // Fields allowed to be updated by members
   const updated = { ...current, ...updates };
 
   const stmt = db.prepare(`
     UPDATE tasks 
-    SET spaceId = ?, title = ?, description = ?, status = ?, priority = ?, link = ?, dueDate = ?, subtasks = ?, attachments = ?, isDeleted = ?, deletedAt = ?
+    SET spaceId = ?, title = ?, description = ?, status = ?, priority = ?, link = ?, dueDate = ?, subtasks = ?, attachments = ?, labels = ?, isDeleted = ?, deletedAt = ?
     WHERE id = ?
   `);
   stmt.run(
@@ -499,6 +516,7 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
     updated.dueDate || null,
     JSON.stringify(updatedSubtasks),
     JSON.stringify(updatedAttachments),
+    JSON.stringify(updatedLabels),
     updated.isDeleted ? 1 : 0,
     updated.deletedAt || null,
     req.params.id

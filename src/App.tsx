@@ -30,6 +30,7 @@ import {
   GripVertical,
   Menu,
   X,
+  Tag,
   ZoomIn,
   ZoomOut,
   PanelLeftClose,
@@ -73,7 +74,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Task, Status, Priority, Space, User } from './types';
+import { Task, Status, Priority, Space, User, Label } from './types';
 import { authService } from './lib/authService';
 import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
@@ -270,7 +271,8 @@ export default function App() {
         const normalizedTasks = fetchedTasks.map((t: any) => ({
           ...t,
           subtasks: Array.isArray(t.subtasks) ? t.subtasks : [],
-          attachments: Array.isArray(t.attachments) ? t.attachments : []
+          attachments: Array.isArray(t.attachments) ? t.attachments : [],
+          labels: Array.isArray(t.labels) ? t.labels : []
         }));
         setTasks(normalizedTasks);
       }
@@ -327,7 +329,8 @@ export default function App() {
     const query = searchQuery.toLowerCase();
     const baseFilter = (t: Task) => 
       t.title.toLowerCase().includes(query) || 
-      t.description.toLowerCase().includes(query);
+      t.description.toLowerCase().includes(query) ||
+      (t.labels || []).some(l => l.name.toLowerCase().includes(query));
 
     if (activeSpaceId === 'trash') {
       return tasks.filter(t => t.isDeleted && baseFilter(t))
@@ -2018,6 +2021,21 @@ const TaskCard = React.memo(function TaskCard({ task, onStatusChange, onPriority
               {task.title}
             </h4>
           )}
+          
+          {/* Labels */}
+          {task.labels && task.labels.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {task.labels.map(label => (
+                <div 
+                  key={label.id}
+                  style={{ backgroundColor: `${label.color}15`, color: label.color, borderColor: `${label.color}30` }}
+                  className="px-1.5 py-0.5 rounded text-[9px] font-bold border leading-none"
+                >
+                  {label.name}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         
         {!isGhost && (
@@ -2213,10 +2231,25 @@ function ListView({ tasks, onStatusChange, onPriorityChange, onRenameTask, onDel
                           }}
                         />
                       ) : (
-                        <div className="flex items-center gap-2">
-                          {isOverdue && <AlertCircle className="w-3.5 h-3.5 text-red-500 mr-1" />}
-                          {task.title}
-                          <SubtaskProgress task={task} />
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            {isOverdue && <AlertCircle className="w-3.5 h-3.5 text-red-500 mr-1" />}
+                            {task.title}
+                            <SubtaskProgress task={task} />
+                          </div>
+                          {task.labels && task.labels.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {task.labels.map(label => (
+                                <div 
+                                  key={label.id}
+                                  style={{ backgroundColor: `${label.color}15`, color: label.color, borderColor: `${label.color}30` }}
+                                  className="px-1.5 py-0.5 rounded text-[8px] font-bold border leading-none"
+                                >
+                                  {label.name}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2451,6 +2484,123 @@ const StatusMenu = React.memo(function StatusMenu({ current, onSelect, position 
 });
 
 
+function LabelPicker({ taskLabels, onUpdate }: { taskLabels: Label[], onUpdate: (labels: Label[]) => void }) {
+  const [showPicker, setShowPicker] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [selectedColor, setSelectedColor] = useState('#6366f1');
+
+  const COLORS = [
+    { bg: 'bg-red-500', hex: '#ef4444' },
+    { bg: 'bg-orange-500', hex: '#f97316' },
+    { bg: 'bg-amber-500', hex: '#f59e0b' },
+    { bg: 'bg-emerald-500', hex: '#10b981' },
+    { bg: 'bg-blue-500', hex: '#3b82f6' },
+    { bg: 'bg-indigo-500', hex: '#6366f1' },
+    { bg: 'bg-purple-500', hex: '#8b5cf6' },
+    { bg: 'bg-pink-500', hex: '#ec4899' },
+    { bg: 'bg-slate-500', hex: '#64748b' },
+  ];
+
+  const addLabel = () => {
+    if (!newLabelName.trim()) return;
+    const newLabel: Label = {
+      id: `label-${Date.now()}`,
+      name: newLabelName.trim(),
+      color: selectedColor
+    };
+    onUpdate([...taskLabels, newLabel]);
+    setNewLabelName('');
+    setShowPicker(false);
+  };
+
+  const removeLabel = (id: string) => {
+    onUpdate(taskLabels.filter(l => l.id !== id));
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex flex-wrap gap-2 items-center">
+        {taskLabels.map(label => (
+          <div 
+            key={label.id}
+            style={{ backgroundColor: `${label.color}15`, color: label.color, borderColor: `${label.color}30` }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all hover:brightness-95 group"
+          >
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: label.color }} />
+            {label.name}
+            <button 
+              onClick={() => removeLabel(label.id)}
+              className="ml-0.5 hover:text-red-500 transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+        <button 
+          onClick={() => setShowPicker(!showPicker)}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border border-dashed border-[var(--color-border)] text-[var(--color-text-sub)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-all"
+        >
+          <Plus className="w-3 h-3" />
+          Label toevoegen
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showPicker && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-full left-0 mt-2 p-4 bg-white border border-[var(--color-border)] rounded-xl shadow-lg space-y-4 w-64 z-[110]"
+          >
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-[var(--color-text-sub)] uppercase">Naam</label>
+              <input 
+                autoFocus
+                type="text"
+                value={newLabelName}
+                onChange={(e) => setNewLabelName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addLabel()}
+                placeholder="Label naam..."
+                className="w-full p-2 bg-gray-50 border border-[var(--color-border)] rounded-lg text-sm outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-[var(--color-text-sub)] uppercase">Kleur</label>
+              <div className="flex flex-wrap gap-2">
+                {COLORS.map(c => (
+                  <button 
+                    key={c.hex}
+                    onClick={() => setSelectedColor(c.hex)}
+                    className={`w-6 h-6 rounded-full ${c.bg} transition-transform hover:scale-110 flex items-center justify-center`}
+                  >
+                    {selectedColor === c.hex && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button 
+                onClick={addLabel}
+                disabled={!newLabelName.trim()}
+                className="flex-1 px-3 py-1.5 bg-[var(--color-accent)] text-white text-xs font-bold rounded-lg disabled:opacity-50"
+              >
+                Opslaan
+              </button>
+              <button 
+                onClick={() => setShowPicker(false)}
+                className="px-3 py-1.5 text-xs font-bold text-[var(--color-text-sub)] hover:bg-gray-50 rounded-lg"
+              >
+                Annuleren
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose: () => void, onUpdate: (updates: Partial<Task>) => void, onDelete: () => void }) {
   const [latestSubtaskId, setLatestSubtaskId] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -2484,39 +2634,45 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
             <div className={`px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-wider shrink-0 ${PRIORITY_STYLES[task.priority] || 'bg-gray-100 text-gray-600'}`}>
               {task.priority}
             </div>
-            <div className="flex items-baseline gap-2 min-w-0 flex-1">
-              {isEditingTitle ? (
-                <input
-                  autoFocus
-                  type="text"
-                  className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight w-full outline-none bg-gray-50 rounded px-1 border border-[var(--color-accent)]"
-                  value={editTitle}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    setEditTitle(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') handleTitleSubmit();
-                    if (e.key === 'Escape') {
+            <div className="flex items-center gap-4 flex-wrap min-w-0 flex-1">
+              <div className="flex items-baseline gap-2 min-w-0">
+                {isEditingTitle ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight w-48 md:w-64 outline-none bg-gray-50 rounded px-1 border border-[var(--color-accent)]"
+                    value={editTitle}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setEditTitle(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') handleTitleSubmit();
+                      if (e.key === 'Escape') {
+                        setEditTitle(task.title);
+                        setIsEditingTitle(false);
+                      }
+                    }}
+                    onBlur={handleTitleSubmit}
+                  />
+                ) : (
+                  <h2 
+                    onClick={() => {
                       setEditTitle(task.title);
-                      setIsEditingTitle(false);
-                    }
-                  }}
-                  onBlur={handleTitleSubmit}
-                />
-              ) : (
-                <h2 
-                  onClick={() => {
-                    setEditTitle(task.title);
-                    setIsEditingTitle(true);
-                  }}
-                  className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight break-words cursor-text hover:bg-gray-50 rounded px-1 transition-colors group flex items-center gap-2"
-                >
-                  {task.title}
-                  <Pencil className="w-3.5 h-3.5 opacity-0 group-hover:opacity-40 shrink-0" />
-                </h2>
-              )}
+                      setIsEditingTitle(true);
+                    }}
+                    className="text-lg md:text-xl font-bold text-[var(--color-text-main)] leading-tight break-words cursor-text hover:bg-gray-50 rounded px-1 transition-colors group flex items-center gap-2"
+                  >
+                    {task.title}
+                    <Pencil className="w-3.5 h-3.5 opacity-0 group-hover:opacity-40 shrink-0" />
+                  </h2>
+                )}
+              </div>
+              <LabelPicker 
+                taskLabels={task.labels || []} 
+                onUpdate={(newLabels) => onUpdate({ labels: newLabels })} 
+              />
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
@@ -2560,6 +2716,8 @@ function TaskModal({ task, onClose, onUpdate, onDelete }: { task: Task, onClose:
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </section>
+
+
 
                 {/* Link */}
                 <section>
