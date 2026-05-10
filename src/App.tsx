@@ -81,6 +81,73 @@ import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
 import { LogOut } from 'lucide-react';
 
+// Custom Confirmation Dialog
+interface ConfirmDialogProps {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmText?: string;
+  cancelText?: string;
+  variant?: 'danger' | 'info';
+}
+
+const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ 
+  isOpen, 
+  title, 
+  message, 
+  onConfirm, 
+  onCancel, 
+  confirmText = 'Bevestigen', 
+  cancelText = 'Annuleren',
+  variant = 'danger'
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-100"
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${variant === 'danger' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+          </div>
+          <p className="text-[15px] text-gray-600 leading-relaxed mb-6">
+            {message}
+          </p>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 text-[14px] font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              {cancelText}
+            </button>
+            <button
+              onClick={() => {
+                onConfirm();
+                onCancel();
+              }}
+              className={`px-4 py-2 text-[14px] font-medium text-white rounded-lg transition-colors shadow-sm ${
+                variant === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              {confirmText}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 // Mock initial data
 const DEFAULT_COLUMNS = ['Te doen', 'Bezig', 'Klaar'];
 
@@ -203,6 +270,31 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  // Confirmation state
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant: 'danger' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    variant: 'danger'
+  });
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void, variant: 'danger' | 'info' = 'danger') => {
+    setConfirmConfig({
+      isOpen: true,
+      title,
+      message,
+      onConfirm,
+      variant
+    });
+  };
 
   const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
@@ -331,17 +423,24 @@ export default function App() {
     // Fallback for special views
     const specialNames: Record<string, string> = {
       'overview': 'Overzicht',
-      'trash': 'Prullenbak'
+      'trash': 'Prullenbak',
+      'inbox': 'Inbox',
+      'my-tasks': 'Mijn Taken'
     };
 
     let columns = DEFAULT_COLUMNS;
     if (activeSpaceId === 'overview' || activeSpaceId === 'my-tasks') {
-      const allCols = new Set<string>(DEFAULT_COLUMNS);
-      spaces.forEach(s => {
-        const sCols = (s.columns && s.columns.length > 0) ? s.columns : DEFAULT_COLUMNS;
-        sCols.forEach(c => allCols.add(c));
-      });
+      const allCols = new Set<string>();
+      if (spaces.length === 0) {
+        DEFAULT_COLUMNS.forEach(c => allCols.add(c));
+      } else {
+        spaces.forEach(s => {
+          const sCols = (s.columns && s.columns.length > 0) ? s.columns : DEFAULT_COLUMNS;
+          sCols.forEach(c => allCols.add(c));
+        });
+      }
       columns = Array.from(allCols);
+      if (columns.length === 0) columns = DEFAULT_COLUMNS;
     }
     
     return {
@@ -535,27 +634,31 @@ export default function App() {
       showNotification('Je moet minimaal één ruimte overhouden', 'error');
       return;
     }
-    if (window.confirm('Weet je zeker dat je deze ruimte en alle bijbehorende taken wilt verwijderen?')) {
-      try {
-        const token = authService.getToken();
-        const res = await fetch(`/api/spaces/${id}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Kon ruimte niet verwijderen');
+    showConfirm(
+      'Ruimte verwijderen',
+      'Weet je zeker dat je deze ruimte en alle bijbehorende taken wilt verwijderen? Dit kan niet ongedaan worden gemaakt.',
+      async () => {
+        try {
+          const token = authService.getToken();
+          const res = await fetch(`/api/spaces/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Kon ruimte niet verwijderen');
+          }
+          setSpaces(prev => prev.filter(s => s.id !== id));
+          if (activeSpaceId === id) {
+            setActiveSpaceId(spaces.find(s => s.id !== id)?.id || '');
+          }
+          showNotification('Ruimte verwijderd');
+        } catch (error: any) {
+          showNotification(error.message, 'error');
         }
-        setSpaces(prev => prev.filter(s => s.id !== id));
-        if (activeSpaceId === id) {
-          setActiveSpaceId(spaces.find(s => s.id !== id)?.id || '');
-        }
-        showNotification('Ruimte verwijderd');
-      } catch (error: any) {
-        showNotification(error.message, 'error');
       }
-    }
-  }, [spaces, activeSpaceId]);
+    );
+  }, [spaces, activeSpaceId, showNotification]);
 
   const handleOpenSpaceModal = React.useCallback((space?: Space) => {
     if (space) {
@@ -614,116 +717,199 @@ export default function App() {
   }, [activeSpaceId, spaces]);
 
   const removeColumn = React.useCallback(async (columnName: string) => {
-    const currentActiveSpace = spaces.find(s => s.id === activeSpaceId);
-    if (!currentActiveSpace) return;
+    const isSpecialView = ['overview', 'my-tasks', 'inbox', 'trash'].includes(activeSpaceId);
     
-    if (!window.confirm(`Weet je zeker dat je de kolom "${columnName}" wilt verwijderen? Alle taken in deze kolom worden naar de eerste kolom verplaatst.`)) return;
+    const targetSpaces = isSpecialView 
+      ? spaces.filter(s => {
+          const cols = (s.columns && s.columns.length > 0) ? s.columns : DEFAULT_COLUMNS;
+          return cols.includes(columnName);
+        })
+      : spaces.filter(s => s.id === activeSpaceId);
 
-    const updatedColumns = ((currentActiveSpace.columns && currentActiveSpace.columns.length > 0) ? currentActiveSpace.columns : DEFAULT_COLUMNS).filter(c => c !== columnName);
-    
-    try {
-      const token = authService.getToken();
-      const res = await fetch(`/api/spaces/${activeSpaceId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ columns: updatedColumns })
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Kon kolom niet verwijderen');
-      }
-      
-      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
-      
-      const fallbackStatus = updatedColumns[0] || 'Te doen';
-      
-      // Persist task status moves on server
-      try {
-        await fetch('/api/tasks/bulk-status-update', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ spaceId: activeSpaceId, oldStatus: columnName, newStatus: fallbackStatus })
-        });
-      } catch (err) {
-        console.error('Kon task statussen niet bijwerken op server:', err);
-      }
-
-      setTasks(prev => {
-        return prev.map(t => t.status === columnName && t.spaceId === activeSpaceId ? { ...t, status: fallbackStatus } : t);
-      });
-      showNotification('Kolom verwijderd');
-    } catch (error: any) {
-      showNotification(error.message, 'error');
+    if (targetSpaces.length === 0) {
+      showNotification('Geen ruimte gevonden met deze kolom', 'error');
+      return;
     }
-  }, [activeSpaceId, spaces]);
+    
+    showConfirm(
+      'Categorie verwijderen',
+      `Weet je zeker dat je de kolom "${columnName}" wilt verwijderen? Alle taken in deze kolom worden naar de eerste kolom verplaatst.`,
+      async () => {
+        try {
+          const token = authService.getToken();
+          
+          // Perform API calls for each space
+          for (const space of targetSpaces) {
+            const currentCols = (space.columns && space.columns.length > 0) ? space.columns : DEFAULT_COLUMNS;
+            const updatedColumns = currentCols.filter(c => c !== columnName);
+            const fallbackStatus = updatedColumns[0] || 'Te doen';
+
+            console.log(`Verwijderen van kolom ${columnName} uit ruimte ${space.id}`);
+
+            const res = await fetch(`/api/spaces/${space.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ columns: updatedColumns })
+            });
+
+            if (!res.ok) {
+              const data = await res.json();
+              throw new Error(data.error || `Kon kolom niet verwijderen uit ${space.name}`);
+            }
+
+            // Persist task status moves on server
+            const bulkRes = await fetch('/api/tasks/bulk-status-update', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ spaceId: space.id, oldStatus: columnName, newStatus: fallbackStatus })
+            });
+            
+            if (!bulkRes.ok) {
+              console.warn(`Bulk status update mislukt voor ruimte ${space.id}, maar kolom is verwijderd uit ruimte.`);
+            }
+          }
+          
+          // Update local state for spaces
+          setSpaces(prev => prev.map(s => {
+            const ts = targetSpaces.find(t => t.id === s.id);
+            if (!ts) return s;
+            const currentCols = (s.columns && s.columns.length > 0) ? s.columns : DEFAULT_COLUMNS;
+            return { ...s, columns: currentCols.filter(c => c !== columnName) };
+          }));
+          
+          // Update local state for tasks
+          setTasks(prev => {
+            return prev.map(t => {
+              const ts = targetSpaces.find(s => s.id === t.spaceId);
+              if (ts && t.status === columnName) {
+                const currentCols = (ts.columns && ts.columns.length > 0) ? ts.columns : DEFAULT_COLUMNS;
+                const updated = currentCols.filter(c => c !== columnName);
+                return { ...t, status: updated[0] || 'Te doen' };
+              }
+              return t;
+            });
+          });
+          
+          showNotification('Kolom verwijderd');
+        } catch (error: any) {
+          console.error('Fout bij verwijderen kolom:', error);
+          showNotification(error.message || 'Kon kolom niet verwijderen', 'error');
+        }
+      }
+    );
+  }, [activeSpaceId, spaces, showNotification]);
 
   const renameColumn = React.useCallback(async (oldName: string, newName: string) => {
     if (!newName.trim() || oldName === newName) return;
-    const currentSpace = spaces.find(s => s.id === activeSpaceId);
-    if (!currentSpace) return;
+
+    const isSpecialView = ['overview', 'my-tasks', 'inbox', 'trash'].includes(activeSpaceId);
     
-    const updatedColumns = ((currentSpace.columns && currentSpace.columns.length > 0) ? currentSpace.columns : DEFAULT_COLUMNS).map(c => c === oldName ? newName : c);
+    const targetSpaces = isSpecialView 
+      ? spaces.filter(s => {
+          const cols = (s.columns && s.columns.length > 0) ? s.columns : DEFAULT_COLUMNS;
+          return cols.includes(oldName);
+        })
+      : spaces.filter(s => s.id === activeSpaceId);
+
+    if (targetSpaces.length === 0) return;
     
     try {
       const token = authService.getToken();
-      await fetch(`/api/spaces/${activeSpaceId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ columns: updatedColumns })
-      });
       
-      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
-      
-      // Persist task status renames on server
-      try {
+      for (const space of targetSpaces) {
+        const currentCols = (space.columns && space.columns.length > 0) ? space.columns : DEFAULT_COLUMNS;
+        const updatedColumns = currentCols.map(c => c === oldName ? newName : c);
+        
+        const res = await fetch(`/api/spaces/${space.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ columns: updatedColumns })
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `Kon kolom niet hernoemen in ${space.name}`);
+        }
+
+        // Persist task status renames on server
         await fetch('/api/tasks/bulk-status-update', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ spaceId: activeSpaceId, oldStatus: oldName, newStatus: newName })
+          body: JSON.stringify({ spaceId: space.id, oldStatus: oldName, newStatus: newName })
         });
-      } catch (err) {
-        console.error('Kon task statussen niet bijwerken op server:', err);
       }
-
-      setTasks(prev => prev.map(t => t.status === oldName && t.spaceId === activeSpaceId ? { ...t, status: newName } : t));
-    } catch (error) {
+      
+      setSpaces(prev => prev.map(s => {
+        const ts = targetSpaces.find(t => t.id === s.id);
+        if (!ts) return s;
+        const currentCols = (s.columns && s.columns.length > 0) ? s.columns : DEFAULT_COLUMNS;
+        return { ...s, columns: currentCols.map(c => c === oldName ? newName : c) };
+      }));
+      
+      setTasks(prev => prev.map(t => {
+        const ts = targetSpaces.find(s => s.id === t.spaceId);
+        return (ts && t.status === oldName) ? { ...t, status: newName } : t;
+      }));
+      
+      showNotification('Categorie hernoemd');
+    } catch (error: any) {
       console.error('Fout bij hernoemen kolom:', error);
+      showNotification(error.message || 'Kon kolom niet hernoemen', 'error');
     }
-  }, [activeSpaceId, spaces]);
+  }, [activeSpaceId, spaces, showNotification]);
 
   const reorderColumns = React.useCallback(async (newColumns: string[]) => {
+    const isSpecialView = ['overview', 'my-tasks', 'inbox', 'trash'].includes(activeSpaceId);
+    
+    // For reordering in overview, find the space that matches these columns
+    const targetSpaceId = isSpecialView 
+      ? (spaces.find(s => s.columns && s.columns.some(c => newColumns.includes(c)))?.id || spaces[0]?.id)
+      : activeSpaceId;
+
+    if (!targetSpaceId) return;
+
     try {
       const token = authService.getToken();
-      await fetch(`/api/spaces/${activeSpaceId}`, {
+      const res = await fetch(`/api/spaces/${targetSpaceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ columns: newColumns })
       });
-      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: newColumns } : s));
-    } catch (error) {
-      console.error('Fout bij herschikken kolommen:', error);
-    }
-  }, [activeSpaceId]);
-
-  const deleteTask = React.useCallback(async (taskId: string) => {
-    try {
-      const token = authService.getToken();
-      const updates = { isDeleted: true, deletedAt: new Date().toISOString() };
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(updates)
-      });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || 'Kon taak niet naar prullenbak verplaatsen');
+        throw new Error(data.error || 'Kon volgorde niet opslaan');
       }
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
-      showNotification('Taak naar prullenbak verplaatst');
+      setSpaces(prev => prev.map(s => s.id === targetSpaceId ? { ...s, columns: newColumns } : s));
     } catch (error: any) {
       showNotification(error.message, 'error');
     }
-  }, []);
+  }, [activeSpaceId, spaces]);
+
+  const deleteTask = React.useCallback(async (taskId: string) => {
+    showConfirm(
+      'Taak verwijderen',
+      'Weet je zeker dat je deze taak naar de prullenbak wilt verplaatsen?',
+      async () => {
+        try {
+          const token = authService.getToken();
+          const updates = { isDeleted: true, deletedAt: new Date().toISOString() };
+          const res = await fetch(`/api/tasks/${taskId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(updates)
+          });
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Kon taak niet naar prullenbak verplaatsen');
+          }
+          setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updates } : t));
+          showNotification('Taak naar prullenbak verplaatst');
+        } catch (error: any) {
+          showNotification(error.message, 'error');
+        }
+      }
+    );
+  }, [showNotification]);
 
   const restoreTask = React.useCallback(async (taskId: string) => {
     try {
@@ -748,31 +934,37 @@ export default function App() {
   const permanentlyDeleteTask = React.useCallback(async (taskId: string) => {
     console.log(`[permanentlyDeleteTask] Aanroep voor ID: ${taskId}`);
     
-    try {
-      const token = authService.getToken();
-      console.log(`[permanentlyDeleteTask] API verzoek sturen naar DELETE /api/tasks/${taskId}`);
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      console.log(`[permanentlyDeleteTask] Server response status: ${response.status}`);
-      
-      if (response.ok) {
-        setTasks(prev => prev.filter(t => t.id !== taskId));
-        if (selectedTaskId === taskId) setSelectedTaskId(null);
-        showNotification('Taak definitief verwijderd');
-        console.log(`[permanentlyDeleteTask] Taak succesvol verwijderd uit UI`);
-      } else {
-        const data = await response.json();
-        console.error(`[permanentlyDeleteTask] API Fout:`, data);
-        throw new Error(data.error || 'Kon taak niet verwijderen');
+    showConfirm(
+      'Taak definitief verwijderen',
+      'Weet je zeker dat je deze taak definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.',
+      async () => {
+        try {
+          const token = authService.getToken();
+          console.log(`[permanentlyDeleteTask] API verzoek sturen naar DELETE /api/tasks/${taskId}`);
+          const response = await fetch(`/api/tasks/${taskId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          console.log(`[permanentlyDeleteTask] Server response status: ${response.status}`);
+          
+          if (response.ok) {
+            setTasks(prev => prev.filter(t => t.id !== taskId));
+            if (selectedTaskId === taskId) setSelectedTaskId(null);
+            showNotification('Taak definitief verwijderd');
+            console.log(`[permanentlyDeleteTask] Taak succesvol verwijderd uit UI`);
+          } else {
+            const data = await response.json();
+            console.error(`[permanentlyDeleteTask] API Fout:`, data);
+            throw new Error(data.error || 'Kon taak niet verwijderen');
+          }
+        } catch (error: any) {
+          console.error(`[permanentlyDeleteTask] Exception:`, error);
+          showNotification(error.message, 'error');
+        }
       }
-    } catch (error: any) {
-      console.error(`[permanentlyDeleteTask] Exception:`, error);
-      showNotification(error.message, 'error');
-    }
-  }, [selectedTaskId]);
+    );
+  }, [selectedTaskId, showNotification]);
 
   const renameTask = React.useCallback(async (taskId: string, newTitle: string) => {
     if (!newTitle.trim()) return;
@@ -1124,13 +1316,13 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-[var(--color-border)]"
+              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[var(--color-border)]"
             >
-              <div className="p-8">
+              <div className="p-6">
                 <h2 className="text-xl font-bold text-[var(--color-text-main)] mb-1">
                   {editingSpaceId ? 'Ruimte Wijzigen' : 'Nieuwe Ruimte'}
                 </h2>
-                <p className="text-sm text-[var(--color-text-sub)] mb-8">
+                <p className="text-sm text-[var(--color-text-sub)] mb-6">
                   {editingSpaceId ? 'Pas de naam en het icoon van je ruimte aan.' : 'Creëer een aparte plek voor je team of projecten.'}
                 </p>
                 
@@ -1194,35 +1386,51 @@ export default function App() {
                 </div>
               </div>
               
-              <div className="bg-gray-50 px-8 py-5 flex flex-col sm:flex-row-reverse gap-3">
-                <button 
-                  onClick={() => {
-                    if (newSpaceName.trim()) {
-                      if (editingSpaceId) {
-                        updateSpace(editingSpaceId, newSpaceName, newSpaceEmoji);
-                      } else {
-                        addSpace(newSpaceName, newSpaceEmoji);
-                      }
+              <div className="bg-gray-50 px-6 py-5 flex flex-col-reverse sm:flex-row items-center justify-between gap-4">
+                <div className="w-full sm:w-auto">
+                  {editingSpaceId && (
+                    <button 
+                      onClick={() => {
+                        deleteSpace(editingSpaceId);
+                        setIsAddingSpace(false);
+                      }}
+                      className="w-full sm:w-auto px-4 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-50 rounded-xl transition-colors text-center"
+                    >
+                      Verwijderen
+                    </button>
+                  )}
+                </div>
+                
+                <div className="flex flex-col-reverse sm:flex-row gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+                  <button 
+                    onClick={() => {
                       setIsAddingSpace(false);
                       setNewSpaceName('');
                       setNewSpaceEmoji('📁');
-                    }
-                  }}
-                  disabled={!newSpaceName.trim()}
-                  className="bg-[var(--color-accent)] text-white px-6 py-3 rounded-xl text-sm font-bold shadow-lg shadow-orange-200 hover:opacity-90 transition-all disabled:opacity-50 disabled:shadow-none"
-                >
-                  {editingSpaceId ? 'Wijzigingen Opslaan' : 'Ruimte Aanmaken'}
-                </button>
-                <button 
-                  onClick={() => {
-                    setIsAddingSpace(false);
-                    setNewSpaceName('');
-                    setNewSpaceEmoji('📁');
-                  }}
-                  className="px-6 py-3 text-sm font-semibold text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] transition-colors"
-                >
-                  Annuleren
-                </button>
+                    }}
+                    className="px-5 py-2.5 text-sm font-semibold text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] transition-colors"
+                  >
+                    Annuleren
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (newSpaceName.trim()) {
+                        if (editingSpaceId) {
+                          updateSpace(editingSpaceId, newSpaceName, newSpaceEmoji);
+                        } else {
+                          addSpace(newSpaceName, newSpaceEmoji);
+                        }
+                        setIsAddingSpace(false);
+                        setNewSpaceName('');
+                        setNewSpaceEmoji('📁');
+                      }
+                    }}
+                    disabled={!newSpaceName.trim()}
+                    className="bg-[var(--color-accent)] text-white px-6 py-2.5 rounded-xl text-[14px] font-bold shadow-lg shadow-orange-200 hover:opacity-90 transition-all disabled:opacity-50 disabled:shadow-none whitespace-nowrap"
+                  >
+                    {editingSpaceId ? 'Opslaan' : 'Aanmaken'}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -1525,11 +1733,20 @@ export default function App() {
                 <CheckCircle2 className="w-5 h-5" />
               ) : (
                 <AlertCircle className="w-5 h-5" />
-              )}
+              ) }
               <span className="text-sm font-bold">{notification.message}</span>
             </motion.div>
           )}
         </AnimatePresence>
+
+        <ConfirmDialog 
+          isOpen={confirmConfig.isOpen}
+          title={confirmConfig.title}
+          message={confirmConfig.message}
+          onConfirm={confirmConfig.onConfirm}
+          onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+          variant={confirmConfig.variant}
+        />
       </div>
   );
 }
@@ -1970,6 +2187,11 @@ const SortableColumn = React.memo(function SortableColumn({ status, taskCount, c
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(status);
 
+  // Sync editName when status prop changes
+  useEffect(() => {
+    setEditName(status);
+  }, [status]);
+
   return (
     <div 
       ref={setNodeRef}
@@ -2020,6 +2242,7 @@ const SortableColumn = React.memo(function SortableColumn({ status, taskCount, c
         
         <div className="relative">
           <button 
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 p-1 rounded transition-all"
           >
@@ -2049,9 +2272,7 @@ const SortableColumn = React.memo(function SortableColumn({ status, taskCount, c
                   <button 
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => {
-                      if (window.confirm(`Weet je zeker dat je de categorie "${status}" wilt verwijderen?`)) {
-                        onRemove();
-                      }
+                      onRemove();
                       setIsMenuOpen(false);
                     }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-red-500 hover:bg-red-50 transition-colors"
@@ -2868,9 +3089,7 @@ function TaskModal({ task, spaces, onClose, onUpdate, onDelete }: { task: Task, 
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
             <button 
               onClick={() => {
-                if (window.confirm('Weet je zeker dat je deze taak wilt verwijderen?')) {
-                  onDelete();
-                }
+                onDelete();
               }}
               className="p-1.5 md:p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors"
               title="Verwijder taak"
