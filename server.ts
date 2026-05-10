@@ -97,6 +97,13 @@ db.exec(`
     FOREIGN KEY (taskId) REFERENCES tasks(id),
     FOREIGN KEY (userId) REFERENCES users(id)
   );
+
+  -- Create indexes for performance
+  CREATE INDEX IF NOT EXISTS idx_spaces_userId ON spaces(userId);
+  CREATE INDEX IF NOT EXISTS idx_tasks_userId ON tasks(userId);
+  CREATE INDEX IF NOT EXISTS idx_tasks_spaceId ON tasks(spaceId);
+  CREATE INDEX IF NOT EXISTS idx_space_members_userId ON space_members(userId);
+  CREATE INDEX IF NOT EXISTS idx_task_members_userId ON task_members(userId);
 `);
 
 // Migration: Ensure dueDate column exists
@@ -136,6 +143,20 @@ try {
   }
 }
 
+// Migration: Ensure columns column exists in spaces
+try {
+  db.prepare('SELECT columns FROM spaces LIMIT 1').get();
+} catch (e) {
+  try {
+    db.exec('ALTER TABLE spaces ADD COLUMN columns TEXT');
+    console.log('Database gemigreerd: columns kolom toegevoegd aan spaces.');
+    // Initialize with defaults for existing spaces
+    db.prepare("UPDATE spaces SET columns = '[\"Te doen\", \"Bezig\", \"Klaar\"]' WHERE columns IS NULL").run();
+  } catch (err) {
+    console.error('Migratiefout spaces columns:', err);
+  }
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -155,6 +176,28 @@ const authenticateToken = (req: any, res: any, next: any) => {
 };
 
 // --- Helpers ---
+
+const cleanupTrash = (userId: string) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const isoString = thirtyDaysAgo.toISOString();
+    
+    db.transaction(() => {
+      // Find tasks to delete
+      const oldTasks = db.prepare('SELECT id FROM tasks WHERE userId = ? AND isDeleted = 1 AND deletedAt < ?').all(userId, isoString) as { id: string }[];
+      if (oldTasks.length > 0) {
+        const ids = oldTasks.map(t => t.id);
+        const placeholders = ids.map(() => '?').join(',');
+        db.prepare(`DELETE FROM task_members WHERE taskId IN (${placeholders})`).run(...ids);
+        db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
+        console.log(`Auto-cleanup: ${oldTasks.length} taken verwijderd uit prullenbak van gebruiker ${userId}`);
+      }
+    })();
+  } catch (err) {
+    console.error('Auto-cleanup error:', err);
+  }
+};
 
 const parseJSON = (val: any) => {
   if (typeof val === 'string') {
@@ -202,25 +245,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   // Cleanup old trash items for this user
-  try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const isoString = thirtyDaysAgo.toISOString();
-    
-    db.transaction(() => {
-      // Find tasks to delete
-      const oldTasks = db.prepare('SELECT id FROM tasks WHERE userId = ? AND isDeleted = 1 AND deletedAt < ?').all(user.id, isoString) as { id: string }[];
-      if (oldTasks.length > 0) {
-        const ids = oldTasks.map(t => t.id);
-        const placeholders = ids.map(() => '?').join(',');
-        db.prepare(`DELETE FROM task_members WHERE taskId IN (${placeholders})`).run(...ids);
-        db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
-        console.log(`Auto-cleanup: ${oldTasks.length} taken verwijderd uit prullenbak van ${user.email}`);
-      }
-    })();
-  } catch (err) {
-    console.error('Auto-cleanup error:', err);
-  }
+  cleanupTrash(user.id);
 
   const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar } });
@@ -315,7 +340,9 @@ app.post('/api/spaces', authenticateToken, (req: any, res) => {
     const { id, name, emoji, icon, color, columns } = req.body;
     const stmt = db.prepare('INSERT INTO spaces (id, userId, name, emoji, icon, color, columns) VALUES (?, ?, ?, ?, ?, ?, ?)');
     stmt.run(id, req.user.id, name, emoji, icon, color, JSON.stringify(columns));
-    res.json({ success: true });
+    
+    const created = db.prepare('SELECT * FROM spaces WHERE id = ?').get(id) as any;
+    res.json({ ...created, isShared: false, columns: JSON.parse(created.columns || '[]') });
   } catch (error: any) {
     console.error('Space creation error:', error);
     res.status(500).json({ error: error.message || 'Kon ruimte niet toevoegen' });
@@ -323,21 +350,55 @@ app.post('/api/spaces', authenticateToken, (req: any, res) => {
 });
 
 app.put('/api/spaces/:id', authenticateToken, (req: any, res) => {
-  const { name, emoji, icon, color, columns } = req.body;
-  
-  const space = db.prepare(`
-    SELECT 1 FROM spaces s
-    WHERE s.id = ? AND (
-      s.userId = ? 
-      OR EXISTS (SELECT 1 FROM space_members WHERE spaceId = s.id AND userId = ?)
-    )
-  `).get(req.params.id, req.user.id, req.user.id);
+  try {
+    const { name, emoji, icon, color, columns } = req.body;
+    
+    const current = db.prepare(`
+      SELECT * FROM spaces s
+      WHERE s.id = ? AND (
+        s.userId = ? 
+        OR EXISTS (SELECT 1 FROM space_members WHERE spaceId = s.id AND userId = ?)
+      )
+    `).get(req.params.id, req.user.id, req.user.id) as any;
 
-  if (!space) return res.status(403).json({ error: 'Je hebt geen rechten om deze ruimte-instellingen te wijzigen' });
+    if (!current) return res.status(403).json({ error: 'Je hebt geen rechten om deze ruimte-instellingen te wijzigen of ruimte bestaat niet' });
 
-  const stmt = db.prepare('UPDATE spaces SET name = ?, emoji = ?, icon = ?, color = ?, columns = ? WHERE id = ?');
-  stmt.run(name, emoji, icon, color, JSON.stringify(columns), req.params.id);
-  res.json({ success: true });
+    const updatedName = name !== undefined ? name : current.name;
+    const updatedEmoji = emoji !== undefined ? emoji : current.emoji;
+    const updatedIcon = icon !== undefined ? icon : current.icon;
+    const updatedColor = color !== undefined ? color : current.color;
+    const updatedColumns = columns !== undefined ? JSON.stringify(columns) : current.columns;
+
+    const stmt = db.prepare('UPDATE spaces SET name = ?, emoji = ?, icon = ?, color = ?, columns = ? WHERE id = ?');
+    stmt.run(updatedName, updatedEmoji, updatedIcon, updatedColor, updatedColumns, req.params.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Update space error:', error);
+    res.status(500).json({ error: 'Kon ruimte niet bijwerken: ' + error.message });
+  }
+});
+
+app.put('/api/tasks/bulk-status-update', authenticateToken, (req: any, res) => {
+  const { spaceId, oldStatus, newStatus } = req.body;
+  if (!spaceId || !oldStatus || !newStatus) return res.status(400).json({ error: 'Ontbrekende parameters' });
+
+  try {
+    // Check access to space
+    const hasAccess = db.prepare(`
+      SELECT 1 FROM spaces s
+      WHERE s.id = ? AND (
+        s.userId = ? 
+        OR EXISTS (SELECT 1 FROM space_members WHERE spaceId = s.id AND userId = ?)
+      )
+    `).get(spaceId, req.user.id, req.user.id);
+
+    if (!hasAccess) return res.status(403).json({ error: 'Geen toegang' });
+
+    db.prepare('UPDATE tasks SET status = ? WHERE spaceId = ? AND status = ?').run(newStatus, spaceId, oldStatus);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Kon taakstatussen niet bijwerken: ' + error.message });
+  }
 });
 
 app.delete('/api/spaces/:id', authenticateToken, (req: any, res) => {
@@ -373,23 +434,7 @@ app.delete('/api/spaces/:id', authenticateToken, (req: any, res) => {
 
 app.get('/api/tasks', authenticateToken, (req: any, res) => {
   // Periodically cleanup old trash items (at least when fetching data)
-  try {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const isoString = thirtyDaysAgo.toISOString();
-    
-    db.transaction(() => {
-      const oldTasks = db.prepare('SELECT id FROM tasks WHERE userId = ? AND isDeleted = 1 AND deletedAt < ?').all(req.user.id, isoString) as { id: string }[];
-      if (oldTasks.length > 0) {
-        const ids = oldTasks.map(t => t.id);
-        const placeholders = ids.map(() => '?').join(',');
-        db.prepare(`DELETE FROM task_members WHERE taskId IN (${placeholders})`).run(...ids);
-        db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
-      }
-    })();
-  } catch (err) {
-    // Silent fail for cleanup
-  }
+  cleanupTrash(req.user.id);
 
   const tasks = db.prepare(`
     SELECT DISTINCT t.* FROM tasks t
@@ -490,9 +535,9 @@ app.put('/api/tasks/:id', authenticateToken, (req: any, res) => {
   if (!current) return res.status(403).json({ error: 'Geen toegang tot deze taak of taak bestaat niet' });
 
   // Handle subtasks, attachments, and labels merging
-  const existingSubtasks = typeof current.subtasks === 'string' ? JSON.parse(current.subtasks || '[]') : (current.subtasks || []);
-  const existingAttachments = typeof current.attachments === 'string' ? JSON.parse(current.attachments || '[]') : (current.attachments || []);
-  const existingLabels = typeof current.labels === 'string' ? JSON.parse(current.labels || '[]') : (current.labels || []);
+  const existingSubtasks = parseJSON(current.subtasks);
+  const existingAttachments = parseJSON(current.attachments);
+  const existingLabels = parseJSON(current.labels);
 
   const updatedSubtasks = updates.subtasks !== undefined ? parseJSON(updates.subtasks) : existingSubtasks;
   const updatedAttachments = updates.attachments !== undefined ? parseJSON(updates.attachments) : existingAttachments;

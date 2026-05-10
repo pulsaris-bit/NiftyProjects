@@ -23,6 +23,7 @@ import {
   Flag,
   CheckCircle2,
   Clock,
+  RefreshCw,
   Briefcase,
   Trash2,
   Edit2,
@@ -131,11 +132,8 @@ export default function App() {
     const handleOrientationChange = () => {
       const isMobile = window.innerWidth < 768;
       if (isMobile) {
-        if (window.innerWidth > window.innerHeight) {
-          setView('list');
-        } else {
-          setView('board');
-        }
+        const newView = window.innerWidth > window.innerHeight ? 'list' : 'board';
+        setView(prev => prev !== newView ? newView : prev);
       }
     };
 
@@ -202,6 +200,7 @@ export default function App() {
   
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
@@ -257,8 +256,8 @@ export default function App() {
 
       if (spacesRes.ok) {
         const fetchedSpaces = await spacesRes.json();
+        setSpaces(fetchedSpaces);
         if (fetchedSpaces.length > 0) {
-          setSpaces(fetchedSpaces);
           // Only set active space if current active space doesn't exist anymore or it's the first load
           setActiveSpaceId(prev => {
             const exists = fetchedSpaces.some((s: any) => s.id === prev) || ['overview', 'inbox', 'trash', 'my-tasks'].includes(prev);
@@ -285,6 +284,26 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Periodic polling every 5 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('Automatische synchronisatie...');
+      loadData();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    await loadData();
+    // Wait a bit to show the spinning animation
+    setTimeout(() => {
+      setIsSyncing(false);
+      showNotification('Gegevens gesynchroniseerd');
+    }, 500);
+  };
 
   useEffect(() => {
     if (isResizing) {
@@ -314,6 +333,16 @@ export default function App() {
       'overview': 'Overzicht',
       'trash': 'Prullenbak'
     };
+
+    let columns = DEFAULT_COLUMNS;
+    if (activeSpaceId === 'overview' || activeSpaceId === 'my-tasks') {
+      const allCols = new Set<string>(DEFAULT_COLUMNS);
+      spaces.forEach(s => {
+        const sCols = (s.columns && s.columns.length > 0) ? s.columns : DEFAULT_COLUMNS;
+        sCols.forEach(c => allCols.add(c));
+      });
+      columns = Array.from(allCols);
+    }
     
     return {
       id: activeSpaceId,
@@ -321,7 +350,7 @@ export default function App() {
       emoji: '💠',
       icon: 'Layout',
       color: 'var(--color-accent)',
-      columns: DEFAULT_COLUMNS
+      columns: columns
     } as Space;
   }, [activeSpaceId, spaces]);
 
@@ -454,6 +483,7 @@ export default function App() {
     if (!name.trim()) return;
     const newSpace: Space = {
       id: `space-${Date.now()}`,
+      userId: currentUser?.id,
       name: name,
       emoji: emoji,
       icon: 'Layers',
@@ -472,13 +502,14 @@ export default function App() {
         const data = await res.json();
         throw new Error(data.error || 'Kon ruimte niet toevoegen');
       }
-      setSpaces(prev => [...prev, newSpace]);
-      setActiveSpaceId(newSpace.id);
+      const createdSpace = await res.json();
+      setSpaces(prev => [...prev, createdSpace]);
+      setActiveSpaceId(createdSpace.id);
       showNotification('Ruimte aangemaakt');
     } catch (error: any) {
       showNotification(error.message, 'error');
     }
-  }, []);
+  }, [currentUser]);
 
   const updateSpace = React.useCallback(async (id: string, name: string, emoji: string) => {
     try {
@@ -541,14 +572,30 @@ export default function App() {
 
   const addColumn = React.useCallback(async (name: string) => {
     if (!name.trim()) return;
-    const currentSpace = spaces.find(s => s.id === activeSpaceId);
-    if (!currentSpace) return;
+    
+    // Determine target space: if in a special view, default to the first real space
+    const targetSpaceId = ['overview', 'my-tasks', 'inbox', 'trash'].includes(activeSpaceId) 
+      ? spaces[0]?.id 
+      : activeSpaceId;
+
+    if (!targetSpaceId) {
+      showNotification('Creëer eerst een ruimte om een categorie toe te voegen', 'error');
+      setIsAddingColumn(false);
+      return;
+    }
+
+    const currentSpace = spaces.find(s => s.id === targetSpaceId);
+    if (!currentSpace) {
+      showNotification('Ruimte niet gevonden', 'error');
+      setIsAddingColumn(false);
+      return;
+    }
     
     const updatedColumns = [...((currentSpace.columns && currentSpace.columns.length > 0) ? currentSpace.columns : DEFAULT_COLUMNS), name];
     
     try {
       const token = authService.getToken();
-      const res = await fetch(`/api/spaces/${activeSpaceId}`, {
+      const res = await fetch(`/api/spaces/${targetSpaceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ columns: updatedColumns })
@@ -557,10 +604,10 @@ export default function App() {
         const data = await res.json();
         throw new Error(data.error || 'Kon kolom niet toevoegen');
       }
-      setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
+      setSpaces(prev => prev.map(s => s.id === targetSpaceId ? { ...s, columns: updatedColumns } : s));
       setNewColumnName('');
       setIsAddingColumn(false);
-      showNotification('Kolom toegevoegd');
+      showNotification(`Kolom toegevoegd aan ${currentSpace.name}`);
     } catch (error: any) {
       showNotification(error.message, 'error');
     }
@@ -587,8 +634,21 @@ export default function App() {
       }
       
       setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
+      
+      const fallbackStatus = updatedColumns[0] || 'Te doen';
+      
+      // Persist task status moves on server
+      try {
+        await fetch('/api/tasks/bulk-status-update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ spaceId: activeSpaceId, oldStatus: columnName, newStatus: fallbackStatus })
+        });
+      } catch (err) {
+        console.error('Kon task statussen niet bijwerken op server:', err);
+      }
+
       setTasks(prev => {
-        const fallbackStatus = updatedColumns[0] || 'Te doen';
         return prev.map(t => t.status === columnName && t.spaceId === activeSpaceId ? { ...t, status: fallbackStatus } : t);
       });
       showNotification('Kolom verwijderd');
@@ -613,6 +673,18 @@ export default function App() {
       });
       
       setSpaces(prev => prev.map(s => s.id === activeSpaceId ? { ...s, columns: updatedColumns } : s));
+      
+      // Persist task status renames on server
+      try {
+        await fetch('/api/tasks/bulk-status-update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ spaceId: activeSpaceId, oldStatus: oldName, newStatus: newName })
+        });
+      } catch (err) {
+        console.error('Kon task statussen niet bijwerken op server:', err);
+      }
+
       setTasks(prev => prev.map(t => t.status === oldName && t.spaceId === activeSpaceId ? { ...t, status: newName } : t));
     } catch (error) {
       console.error('Fout bij hernoemen kolom:', error);
@@ -1175,61 +1247,33 @@ export default function App() {
               </div>
             </div>
             
-            {/* Mobile Plus Button (Add Category) */}
-            <div className="relative lg:hidden">
+            <div className="flex items-center gap-1">
               <button 
-                onClick={() => setIsAddingColumn(true)}
-                className="p-2 text-[var(--color-accent)] hover:bg-orange-50 rounded-lg transition-all"
-                title="Nieuwe categorie toevoegen"
+                onClick={handleManualSync}
+                className={`p-2 text-[var(--color-text-sub)] hover:text-[var(--color-accent)] hover:bg-orange-50 rounded-lg transition-all ${isSyncing ? 'animate-spin text-[var(--color-accent)]' : ''}`}
+                title="Synchroniseren"
               >
-                <PlusCircle className="w-6 h-6" />
+                <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
               </button>
-            </div>
-          </div>
 
-          {/* Left Group: Breadcrumb + View Switcher + Add Column */}
-          <div className="flex items-center gap-3 lg:gap-6 flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              {/* View Switcher (Hidden on tablets & smaller) */}
-              <div className="hidden lg:flex bg-gray-50 p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
-                <button 
-                  onClick={() => setView('board')}
-                  className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
-                    view === 'board' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
-                  }`}
-                >
-                  Bord
-                </button>
-                <button 
-                  onClick={() => setView('list')}
-                  className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
-                    view === 'list' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
-                  }`}
-                >
-                  Lijst
-                </button>
-              </div>
-
-              {/* Nieuwe categorie button (Hidden on tablets & smaller) */}
-              <div className="relative hidden lg:block">
+              {/* Mobile Plus Button (Add Category) */}
+              <div className="relative lg:hidden">
                 <button 
                   onClick={() => setIsAddingColumn(true)}
-                  className="p-1.5 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all border border-transparent hover:border-[var(--color-border)]"
+                  className="p-2 text-[var(--color-accent)] hover:bg-orange-50 rounded-lg transition-all"
                   title="Nieuwe categorie toevoegen"
                 >
-                  <PlusCircle className="w-5 h-5 sm:w-6 s-6" />
+                  <PlusCircle className="w-6 h-6" />
                 </button>
               </div>
 
-              {/* Global Add Category Popover */}
               <AnimatePresence>
                 {isAddingColumn && (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.95, y: 10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className="absolute right-4 xl:right-auto xl:left-auto mt-20 xl:mt-12 w-72 bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] z-[200] p-6"
-                    style={{ position: 'absolute', top: '0', right: '16px' }}
+                    className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] z-[200] p-6"
                   >
                     <div className="flex items-center gap-3 mb-4">
                       <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-[var(--color-accent)]">
@@ -1265,6 +1309,97 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+          </div>
+
+          {/* Left Group: Breadcrumb + View Switcher + Add Column */}
+          <div className="flex items-center gap-3 lg:gap-6 flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              {/* View Switcher (Hidden on tablets & smaller) */}
+              <div className="hidden lg:flex bg-gray-50 p-1 rounded-lg border border-[var(--color-border)] shadow-sm w-fit shrink-0">
+                <button 
+                  onClick={() => setView('board')}
+                  className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
+                    view === 'board' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
+                  }`}
+                >
+                  Bord
+                </button>
+                <button 
+                  onClick={() => setView('list')}
+                  className={`flex items-center justify-center gap-2 px-3 sm:px-5 py-1 rounded-md text-[12px] sm:text-[13px] font-semibold transition-all ${
+                    view === 'list' ? 'bg-white shadow-sm border border-[var(--color-border)] text-[var(--color-accent)]' : 'text-[var(--color-text-sub)] hover:text-[var(--color-text-main)]'
+                  }`}
+                >
+                  Lijst
+                </button>
+              </div>
+
+              {/* Nieuwe categorie button (Hidden on tablets & smaller) */}
+              <div className="relative hidden lg:block">
+                <button 
+                  onClick={() => setIsAddingColumn(true)}
+                  className="p-1.5 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all border border-transparent hover:border-[var(--color-border)]"
+                  title="Nieuwe categorie toevoegen"
+                >
+                  <PlusCircle className="w-5 h-5 sm:w-6 s-6" />
+                </button>
+
+                <AnimatePresence>
+                  {isAddingColumn && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                      className="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-[var(--color-border)] z-[200] p-6"
+                    >
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-[var(--color-accent)]">
+                          <PlusCircle className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-sm font-bold text-gray-900">Nieuwe categorie</h3>
+                      </div>
+                      
+                      <input 
+                        autoFocus
+                        type="text"
+                        placeholder="Bijv. 'Wachten' of 'Review'..."
+                        className="w-full bg-gray-50 border border-[var(--color-border)] rounded-xl px-4 py-3 text-base mb-4 outline-none focus:border-[var(--color-accent)] focus:ring-4 focus:ring-orange-500/5 transition-all text-[var(--color-text-main)] font-medium"
+                        value={newColumnName}
+                        onChange={(e) => setNewColumnName(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addColumn(newColumnName)}
+                      />
+                      
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => setIsAddingColumn(false)}
+                          className="flex-1 px-4 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors"
+                        >
+                          Annuleren
+                        </button>
+                        <button 
+                          onClick={() => addColumn(newColumnName)}
+                          className="flex-1 px-4 py-2.5 text-xs font-bold bg-[var(--color-accent)] text-white rounded-xl shadow-lg shadow-orange-100 hover:opacity-90 transition-all hover:-translate-y-0.5"
+                        >
+                          Toevoegen
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="h-4 w-[1px] bg-gray-200 mx-1 hidden lg:block" />
+
+              <button 
+                onClick={handleManualSync}
+                className={`hidden lg:flex items-center gap-2 px-3 py-1.5 text-[var(--color-text-sub)] hover:text-[var(--color-text-main)] hover:bg-gray-100 rounded-lg transition-all border border-transparent hover:border-[var(--color-border)] ${isSyncing ? 'text-[var(--color-accent)]' : ''}`}
+                title="Handmatig synchroniseren"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span className="text-[12px] font-semibold">Synchroniseren</span>
+              </button>
+
             </div>
           </div>
 
@@ -1696,8 +1831,6 @@ function BoardView({ tasks, allTasks, spaces, setTasks, activeSpaceId, searchQue
         
         return newTasks;
       });
-      // Save status change to backend
-      onStatusChange(activeId as string, overStatus as Status);
     }
   };
 
@@ -1715,6 +1848,19 @@ function BoardView({ tasks, allTasks, spaces, setTasks, activeSpaceId, searchQue
       }
       return;
     }
+
+    const draggedTask = allTasks.find(t => t.id === active.id);
+    if (!draggedTask) return;
+
+    // Persist status change if it happened during DragOver
+    // Since handleDragOver already updated the state, we check the current state against a potential previous?
+    // Actually, we can just call onStatusChange(active.id, draggedTask.status) here.
+    // To be efficient, we only call it if it's different from what we'd expect, 
+    // but the simplest is to just ensure it's synced.
+    
+    // We already have the updated tasks in state via handleDragOver.
+    // So we just need to ensure the server knows the latest status of the dragged task.
+    onStatusChange(active.id as string, draggedTask.status as Status);
 
     if (active.id !== over.id) {
       setTasks(prev => {
@@ -2156,7 +2302,11 @@ const TaskCard = React.memo(function TaskCard({ task, spaces, onStatusChange, on
         <div className="flex items-center justify-between mt-1">
         <PriorityMenu current={task.priority} onSelect={(p) => onPriorityChange(task.id, p)} />
         <div className="flex items-center gap-2">
-          <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} />
+          <StatusMenu 
+            current={task.status} 
+            onSelect={(s) => onStatusChange(task.id, s)} 
+            options={spaces?.find(s => s.id === task.spaceId)?.columns}
+          />
           <SubtaskProgress task={task} />
         </div>
       </div>
@@ -2198,7 +2348,7 @@ function ListView({ tasks, spaces, onStatusChange, onPriorityChange, onRenameTas
           <thead>
             <tr className="bg-gray-50 border-b border-[var(--color-border)] text-[var(--color-text-sub)] font-semibold text-[11px] uppercase tracking-wider">
               <th className="px-6 py-4">Taaknaam</th>
-              <th className="px-6 py-4">Status</th>
+              <th className="px-6 py-4">Kolom</th>
               <th className="px-6 py-4">Prioriteit</th>
               <th className="px-6 py-4">Vervaldatum</th>
               <th className="px-6 py-4 w-10 text-right pr-10">Acties</th>
@@ -2288,7 +2438,11 @@ function ListView({ tasks, spaces, onStatusChange, onPriorityChange, onRenameTas
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <StatusMenu current={task.status} onSelect={(s) => onStatusChange(task.id, s)} />
+                    <StatusMenu 
+                      current={task.status} 
+                      onSelect={(s) => onStatusChange(task.id, s)} 
+                      options={spaces.find(s => s.id === task.spaceId)?.columns}
+                    />
                   </td>
                   <td className="px-6 py-4">
                     <PriorityMenu current={task.priority} onSelect={(p) => onPriorityChange(task.id, p)} />
@@ -2474,9 +2628,10 @@ const PriorityMenu = React.memo(function PriorityMenu({ current, onSelect, posit
   );
 });
 
-const StatusMenu = React.memo(function StatusMenu({ current, onSelect, position = 'bottom' }: { current: Status, onSelect: (s: Status) => void, position?: 'top' | 'bottom' }) {
+const StatusMenu = React.memo(function StatusMenu({ current, onSelect, options, position = 'bottom' }: { current: string, onSelect: (s: string) => void, options?: string[], position?: 'top' | 'bottom' }) {
   const [open, setOpen] = useState(false);
-  const statuses: Status[] = ['Te doen', 'Bezig', 'Klaar'];
+  const DEFAULT_STATUSES = ['Te doen', 'Bezig', 'Klaar'];
+  const statuses = options && options.length > 0 ? options : DEFAULT_STATUSES;
 
   return (
     <div className={`relative ${open ? 'z-[120]' : 'z-auto'}`}>
@@ -2941,9 +3096,14 @@ function TaskModal({ task, spaces, onClose, onUpdate, onDelete }: { task: Task, 
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 bg-gray-50/50 p-3 md:p-4 rounded-2xl border border-[var(--color-border)]">
                     <div>
-                      <span className="block text-[9px] md:text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-1.5 md:mb-2 ml-1">Status</span>
+                      <span className="block text-[9px] md:text-[10px] font-bold text-[var(--color-text-sub)] uppercase tracking-widest mb-1.5 md:mb-2 ml-1">Kolom</span>
                       <div className="flex items-center h-9 md:h-[42px] px-2.5 md:px-3 bg-white border border-[var(--color-border)] rounded-xl shadow-sm">
-                        <StatusMenu current={task.status} onSelect={(s) => onUpdate({ status: s })} position="top" />
+                        <StatusMenu 
+                          current={task.status} 
+                          onSelect={(s) => onUpdate({ status: s })} 
+                          options={currentSpace?.columns}
+                          position="top" 
+                        />
                       </div>
                     </div>
                     <div>
